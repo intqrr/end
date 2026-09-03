@@ -3,7 +3,7 @@ name: Build Windows EXE
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:   # позволяет запускать вручную
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,10 +21,10 @@ jobs:
           override: true
 
       - name: Build release
-        run: cargo build --release
+        run: cargo build --release --bin end
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coach-windows
-          path: target/release/coach.exe
+          name: end-windows
+          path: target/release/end.exe
