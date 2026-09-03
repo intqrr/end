@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -109,13 +110,20 @@ fn has_extension(path: &Path, extensions: &[&str]) -> bool {
 
 fn is_hitsound_name(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
-    [
-        "hit", "slider", "combobreak", "applause", "failsound", "drum-", "normal-",
-        "soft-", "spinner",
-    ]
-        .iter()
-        .any(|part| name.contains(part))
+    // Точные osu!-хитсаунды и их варианты с приставками (soft-hitnormal, drum-hitclap и т.д.),
+    // а не любое слово, где встречается подстрока "hit" (иначе ловятся реальные треки
+    // вроде "Hitorigoto").
+    const HITSOUND_NAMES: &[&str] = &[
+        "hitnormal", "hitwhistle", "hitfinish", "hitclap", "hitmiss",
+        "slidertick", "sliderslide", "sliderwhistle",
+        "combobreak", "applause", "failsound", "spinnerbonus", "spinnerspin",
+    ];
+
+    HITSOUND_NAMES.iter().any(|part| name.contains(part))
         || name.starts_with("count")
+        || name.starts_with("drum-")
+        || name.starts_with("normal-")
+        || name.starts_with("soft-")
 }
 
 fn marker_path(path: &Path) -> PathBuf {
@@ -315,6 +323,32 @@ fn clean_folder_name(name: &str) -> String {
     }
 }
 
+// Метаданные из .osu (Artist/Title) — обычный текст и могут содержать символы,
+// недопустимые или опасные в именах файлов Windows. В частности ':' на NTFS —
+// это разделитель Alternate Data Stream: "Foo (CV: Bar).mp3" молча создаёт
+// нулевой файл "Foo (CV" с реальным аудио, спрятанным в скрытом потоке,
+// невидимом для обычного чтения директории. Поэтому чистим title перед тем,
+// как строить из него путь к файлу.
+fn sanitize_filename(name: &str) -> String {
+    let mut result: String = name
+        .chars()
+        .map(|ch| match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            ch if (ch as u32) < 0x20 => '_',
+            ch => ch,
+        })
+        .collect();
+
+    while matches!(result.chars().last(), Some('.') | Some(' ')) {
+        result.pop();
+    }
+
+    if result.is_empty() {
+        result = "track".to_owned();
+    }
+    result
+}
+
 fn choose_images(mut images: Vec<PathBuf>, background: Option<&str>) -> Vec<PathBuf> {
     let mut jpgs: Vec<_> = images
         .iter()
@@ -400,6 +434,23 @@ fn process_and_flatten_folder(folder: &Path, songs_dir: &Path) -> Option<PathBuf
         })?
         .clone();
 
+    // ВАЖНО: в папке может быть больше одного настоящего трека (не хитсаунда).
+    // Раньше все остальные аудиофайлы, кроме выбранного source_audio, безвозвратно
+    // терялись при fs::remove_dir_all(folder) ниже. Забираем их отдельными треками
+    // под их собственными именами, чтобы они попали в songs_dir и не пропали.
+    for extra in audio.iter().filter(|path| *path != &source_audio) {
+        let Some(stem) = extra.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if is_hitsound_name(stem) {
+            continue; // это реально хитсаунд/сэмпл — его можно оставить на удаление
+        }
+        let name = extra.file_name().and_then(|n| n.to_str()).unwrap_or("track");
+        let target = unique_dest_path(songs_dir, name);
+        eprintln!("[process] Доп. трек в папке, выношу отдельно: {:?} -> {:?}", extra, target);
+        move_file(extra, &target);
+    }
+
     let title = title.unwrap_or_else(|| {
         folder
             .file_name()
@@ -407,6 +458,7 @@ fn process_and_flatten_folder(folder: &Path, songs_dir: &Path) -> Option<PathBuf
             .map(clean_folder_name)
             .unwrap_or_else(|| "Track".to_owned())
     });
+    let title = sanitize_filename(&title);
     let selected_images = choose_images(images, background.as_deref());
     let audio_ext = extension(&source_audio).to_ascii_lowercase();
 
@@ -481,11 +533,10 @@ fn convert_video_to_webm(path: &Path) -> Option<PathBuf> {
 }
 
 pub fn sync_tracks() -> Vec<Track> {
+    let total_start = Instant::now();
     eprintln!("[sync] НАЧАЛО sync_tracks");
 
-    if let Err(e) = auto_download() {
-        eprintln!("[sync] Не удалось скачать ffmpeg: {}", e);
-    }
+    // auto_download() убран – вызывать один раз при старте
 
     crate::audio_server::update_cache_buster();
     eprintln!("[sync] cache_buster обновлён");
@@ -499,6 +550,7 @@ pub fn sync_tracks() -> Vec<Track> {
     eprintln!("[sync] songs_dir: {:?}", songs_dir);
 
     // === 1. Обработка вложенных папок ===
+    let start = Instant::now();
     eprintln!("[sync] Чтение songs_dir для обработки папок...");
     let entries = match fs::read_dir(&songs_dir) {
         Ok(e) => e,
@@ -517,8 +569,10 @@ pub fn sync_tracks() -> Vec<Track> {
             eprintln!("[sync] Пропускаем файл (не папка): {:?}", path);
         }
     }
+    eprintln!("[sync] Обработка папок заняла: {:?}", start.elapsed());
 
     // === 2. Сбор аудиофайлов из корня ===
+    let start = Instant::now();
     eprintln!("[sync] Обработка папок завершена. Начинаем сбор аудиофайлов из корня...");
 
     let entries = match fs::read_dir(&songs_dir) {
@@ -529,7 +583,6 @@ pub fn sync_tracks() -> Vec<Track> {
         }
     };
 
-    // Собираем все файлы в вектор для логирования
     let files: Vec<_> = entries.filter_map(Result::ok).collect();
     eprintln!("[sync] Всего элементов в songs_dir после обработки: {}", files.len());
 
@@ -570,7 +623,7 @@ pub fn sync_tracks() -> Vec<Track> {
             }
         }
 
-        // ✅ ВЫЗОВЫ trim_silence И normalize_audio_volume (НЕ ОТКЛЮЧАЕМ)
+        // ✅ ВЫЗОВЫ trim_silence И normalize_audio_volume
         if let Err(e) = trim_silence(&path) {
             eprintln!("[sync] Ошибка обрезки тишины {}: {}", path.display(), e);
         }
@@ -587,17 +640,20 @@ pub fn sync_tracks() -> Vec<Track> {
         audio_files.push((title, path));
     }
 
+    eprintln!("[sync] Сбор аудиофайлов занял: {:?}", start.elapsed());
     eprintln!("[sync] Всего найдено аудиофайлов: {}", audio_files.len());
 
     // === 3. Создание треков ===
+    let start = Instant::now();
     for (id, (title, path)) in audio_files.into_iter().enumerate() {
         let track = build_track(id, title, path);
         eprintln!("[sync] Создан трек #{}: {}", id, track.name);
         tracks.push(track);
     }
+    eprintln!("[sync] Создание треков заняло: {:?}", start.elapsed());
 
     eprintln!("[sync] Всего треков: {}", tracks.len());
-    eprintln!("[sync] КОНЕЦ sync_tracks");
+    eprintln!("[sync] КОНЕЦ sync_tracks, общее время: {:?}", total_start.elapsed());
     tracks
 }
 

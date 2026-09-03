@@ -15,6 +15,9 @@ fn makise_data_uri() -> String {
 }
 
 fn main() {
+    if let Err(e) = ffmpeg_sidecar::download::auto_download() {
+        eprintln!("Ошибка скачивания ffmpeg: {}", e);
+    }
     if let Some(dirs) = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp") {
         eprintln!("Config dir: {:?}", dirs.config_dir());
         eprintln!("Data dir: {:?}", dirs.data_dir());
