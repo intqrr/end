@@ -36,6 +36,21 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
             tracks.set(loaded);
         });
     });
+    use_effect(move || {
+        let settings = data::load_settings();
+        let volume = settings.volume;
+        let js = format!(r#"
+        const a = document.getElementById('audio-player');
+        const slider = document.querySelector('.volume-slider');
+        if (a) {{
+            a.volume = {volume};
+        }}
+        if (slider) {{
+            slider.value = {volume};
+        }}
+    "#);
+        let _ = document::eval(&js);
+    });
     let mut current_track_index = use_signal(|| Option::<usize>::None);
     let is_shuffle = use_signal(|| false);
     let mut is_playing = use_signal(|| false);

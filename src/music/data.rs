@@ -2,6 +2,45 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
+
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Settings {
+    pub volume: f64,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { volume: 1.0 }
+    }
+}
+
+pub fn get_settings_path() -> Option<PathBuf> {
+    let dirs = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp")?;
+    let config_dir = dirs.config_dir();
+    std::fs::create_dir_all(config_dir).ok()?;
+    Some(config_dir.join("settings.json"))
+}
+
+pub fn load_settings() -> Settings {
+    let Some(path) = get_settings_path() else {
+        return Settings::default();
+    };
+    let Ok(data) = std::fs::read_to_string(path) else {
+        return Settings::default();
+    };
+    serde_json::from_str(&data).unwrap_or_default()
+}
+
+pub fn save_settings(settings: &Settings) {
+    let Some(path) = get_settings_path() else {
+        return;
+    };
+    if let Ok(json) = serde_json::to_string(settings) {
+        let _ = std::fs::write(path, json);
+    }
+}
 
 use ffmpeg_sidecar::{
     command::FfmpegCommand,
@@ -315,6 +354,7 @@ fn move_file(source: &Path, destination: &Path) {
 }
 
 fn process_and_flatten_folder(folder: &Path, songs_dir: &Path) -> Option<PathBuf> {
+    eprintln!("[process] ВХОД В ФУНКЦИЮ для папки: {:?}", folder);
     let mut title = None;
     let mut background = None;
     let mut images = Vec::new();
@@ -437,10 +477,15 @@ fn convert_video_to_webm(path: &Path) -> Option<PathBuf> {
 }
 
 pub fn sync_tracks() -> Vec<Track> {
+    eprintln!("[sync] НАЧАЛО sync_tracks");
+
     if let Err(e) = auto_download() {
         eprintln!("[sync] Не удалось скачать ffmpeg: {}", e);
     }
+
     crate::audio_server::update_cache_buster();
+    eprintln!("[sync] cache_buster обновлён");
+
     let mut tracks = Vec::new();
 
     let Some(songs_dir) = get_songs_dir() else {
@@ -449,76 +494,56 @@ pub fn sync_tracks() -> Vec<Track> {
     };
     eprintln!("[sync] songs_dir: {:?}", songs_dir);
 
-    if let Ok(entries) = fs::read_dir(&songs_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                eprintln!("[sync] Обрабатываем папку: {:?}", path);
-                process_and_flatten_folder(&path, &songs_dir);
-            }
+    // 🔍 Читаем содержимое songs_dir
+    eprintln!("[sync] Читаем songs_dir...");
+    let entries = match fs::read_dir(&songs_dir) {
+        Ok(entries) => {
+            eprintln!("[sync] songs_dir прочитан успешно");
+            entries
         }
-    } else {
-        eprintln!("[sync] Не удалось прочитать songs_dir");
-        return tracks;
-    }
-
-    let Ok(entries) = fs::read_dir(&songs_dir) else {
-        eprintln!("[sync] Не удалось прочитать songs_dir повторно");
-        return tracks;
+        Err(e) => {
+            eprintln!("[sync] Ошибка чтения songs_dir: {}", e);
+            return tracks;
+        }
     };
 
-    let audio_files: Vec<(String, PathBuf)> = entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file())
-        .filter_map(|path| {
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-
-            if matches!(ext.as_str(), "avi" | "mp4") {
-                eprintln!("[sync] Конвертируем видео: {:?}", path);
-                let _ = convert_video_to_webm(&path);
-                return None;
-            }
-
-            if !TRACK_AUDIO_EXTENSIONS.contains(&ext.as_str()) {
-                return None;
-            }
-
-            // Проверяем существование файла перед обработкой
-            if !path.exists() {
-                eprintln!("[sync] Файл {} не существует, пропускаем", path.display());
-                return None;
-            }
-
-            // Вызываем обрезку и нормализацию, но игнорируем ошибки, так как трек всё равно создаётся
-            if let Err(e) = trim_silence(&path) {
-                eprintln!("[sync] Ошибка обрезки тишины {}: {}", path.display(), e);
-            }
-            if let Err(e) = normalize_audio_volume(&path) {
-                eprintln!("[sync] Ошибка нормализации {}: {}", path.display(), e);
-            }
-
-            let name = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("Audio");
-            let title = extract_song_title(name);
-            eprintln!("[sync] Найден аудиофайл: {} -> {}", name, title);
-            Some((title, path))
-        })
-        .collect();
-
-    for (id, (title, path)) in audio_files.into_iter().enumerate() {
-        let track = build_track(id, title, path);
-        eprintln!("[sync] Создан трек #{}: {}", id, track.name);
-        tracks.push(track);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        eprintln!("[sync] Найден элемент: {:?}, is_dir={}", path, path.is_dir());
     }
 
-    eprintln!("[sync] Всего найдено треков: {}", tracks.len());
+    eprintln!("[sync] Начинаем обработку папок...");
+    // Обработка папок
+    let entries = match fs::read_dir(&songs_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            eprintln!("[sync] Ошибка повторного чтения songs_dir: {}", e);
+            return tracks;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            eprintln!("[sync] Обрабатываем папку: {:?}", path);
+            process_and_flatten_folder(&path, &songs_dir);
+        } else {
+            eprintln!("[sync] Пропускаем файл (не папка): {:?}", path);
+        }
+    }
+
+    eprintln!("[sync] Обработка папок завершена. Начинаем сбор аудиофайлов...");
+
+    let entries = match fs::read_dir(&songs_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            eprintln!("[sync] Ошибка чтения songs_dir для аудио: {}", e);
+            return tracks;
+        }
+    };
+
+    // ... остальной код (сбор аудиофайлов) ...
+    eprintln!("[sync] КОНЕЦ sync_tracks");
     tracks
 }
 

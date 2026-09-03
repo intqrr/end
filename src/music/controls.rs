@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use super::data;
 use super::data::Track;
 
 #[component]
@@ -60,6 +61,11 @@ pub fn PlayerControls(
                                     if (a) a.volume = {val};
                                 "#);
                                 let _ = document::eval(&js);
+                                // Сохраняем в конфиг
+                                spawn(async move {
+                                    let settings = data::Settings { volume: val };
+                                    data::save_settings(&settings);
+                                });
                             }
                         }
                     }
