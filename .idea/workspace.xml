@@ -12,7 +12,12 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="68f3329a-88f5-481c-a444-1423602bc7f9" name="Changes" comment="" />
+    <list default="true" id="68f3329a-88f5-481c-a444-1423602bc7f9" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/end.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -117,7 +122,7 @@
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
     "git-widget-placeholder": "main",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/home/int/documents/projects/rust/coachGUI/assets",
+    "last_opened_file_path": "/home/int/documents/projects/rust/end",
     "list.type.of.created.stylesheet": "CSS",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.jshint": "true",

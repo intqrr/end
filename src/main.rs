@@ -1,9 +1,7 @@
 use dioxus::prelude::*;
 use dioxus::desktop::{Config, WindowBuilder};
-
 mod music;
 use music::*;
-
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 const MAKISE: Asset = asset!("/assets/makise.png");
 
