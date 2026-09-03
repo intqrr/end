@@ -365,24 +365,28 @@ fn process_and_flatten_folder(folder: &Path, songs_dir: &Path) -> Option<PathBuf
     });
     let selected_images = choose_images(images, background.as_deref());
     let audio_ext = extension(&source_audio).to_ascii_lowercase();
-    let target_audio = songs_dir.join(format!("{title}.{audio_ext}"));
 
+    // Уникальное имя для аудио
+    let target_audio = unique_dest_path(songs_dir, &format!("{title}.{audio_ext}"));
     move_file(&source_audio, &target_audio);
 
+    // Уникальные имена для изображений
     for (index, image) in selected_images.iter().enumerate() {
         let ext = extension(image).to_ascii_lowercase();
-        let name = if index == 0 {
+        let base_name = if index == 0 {
             format!("{title}.{ext}")
         } else {
             format!("{title}_{index}.{ext}")
         };
-        move_file(image, &songs_dir.join(name));
+        let target = unique_dest_path(songs_dir, &base_name);
+        move_file(image, &target);
     }
 
-    if let Some(video) = video {
-        let ext = extension(&video).to_ascii_lowercase();
-        let target = songs_dir.join(format!("{title}.{ext}"));
-        move_file(&video, &target);
+    if let Some(video_path) = video {
+        let ext = extension(&video_path).to_ascii_lowercase();
+        let base_name = format!("{title}.{ext}");
+        let target = unique_dest_path(songs_dir, &base_name);
+        move_file(&video_path, &target);
         if ext != "webm" {
             convert_video_to_webm(&target);
         }
@@ -524,17 +528,26 @@ fn unique_dest_path(dir: &Path, file_name: &str) -> PathBuf {
         return original;
     }
 
-    let path = Path::new(file_name);
-    let stem = path.file_stem().and_then(|name| name.to_str()).unwrap_or("track");
-    let ext = path.extension().and_then(|ext| ext.to_str());
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("track");
+    let ext = Path::new(file_name)
+        .extension()
+        .and_then(|s| s.to_str());
 
-    (1usize..)
-        .map(|index| match ext {
-            Some(ext) => dir.join(format!("{stem}_{index}.{ext}")),
-            None => dir.join(format!("{stem}_{index}")),
-        })
-        .find(|path| !path.exists())
-        .unwrap()
+    for n in 1usize.. {
+        let name = match ext {
+            Some(ext) => format!("{stem}_{n}.{ext}"),
+            None => format!("{stem}_{n}"),
+        };
+        let candidate = dir.join(name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    unreachable!()
 }
 
 pub fn import_file_to_songs_dir(original: &Path, file_name: &str) -> Option<PathBuf> {
