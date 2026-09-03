@@ -2,8 +2,9 @@ use dioxus::prelude::*;
 use dioxus::desktop::{Config, WindowBuilder};
 mod music;
 use music::*;
-const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
-const MAKISE: Asset = asset!("/assets/makise.png");
+const TAILWIND_CSS: Asset = asset!("assets/tailwind.css");
+const MAKISE: Asset = asset!("assets/makise.png");
+use std::path::PathBuf;
 
 fn main() {
     std::env::set_var("GTK_THEME", "Adwaita:dark");

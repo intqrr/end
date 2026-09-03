@@ -11,9 +11,9 @@ use data::{
 };
 use super::audio_server::unregister_track;
 
-const MUSIC_BASE_CSS: Asset = asset!("/assets/music_base.css");
-const MUSIC_VISUAL_CSS: Asset = asset!("/assets/music_visual.css");
-const MUSIC_CONTROLS_CSS: Asset = asset!("/assets/music_controls.css");
+const MUSIC_BASE_CSS: Asset = asset!("assets/music_base.css");
+const MUSIC_VISUAL_CSS: Asset = asset!("assets/music_visual.css");
+const MUSIC_CONTROLS_CSS: Asset = asset!("assets/music_controls.css");
 
 const FORMAT_TIME_JS: &str = r#"
 function fmtTime(s) {

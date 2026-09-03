@@ -13,16 +13,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="68f3329a-88f5-481c-a444-1423602bc7f9" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/assets/music_base.css" beforeDir="false" afterPath="$PROJECT_DIR$/assets/music_base.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assets/music_controls.css" beforeDir="false" afterPath="$PROJECT_DIR$/assets/music_controls.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assets/music_visual.css" beforeDir="false" afterPath="$PROJECT_DIR$/assets/music_visual.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assets/tailwind.css" beforeDir="false" afterPath="$PROJECT_DIR$/assets/tailwind.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/music/audio_server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/audio_server.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/music/controls.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/controls.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/music/data.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/data.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/music/music_player.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/music_player.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/music/tracks.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/tracks.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/music/visual.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/visual.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
