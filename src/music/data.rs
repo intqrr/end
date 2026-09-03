@@ -348,47 +348,82 @@ fn convert_video_to_webm(path: &Path) -> Option<PathBuf> {
 
 pub fn sync_tracks() -> Vec<Track> {
     crate::audio_server::update_cache_buster();
-    let Some(songs_dir) = get_songs_dir() else {
-        return Vec::new();
-    };
+    let mut tracks = Vec::new();
 
+    let Some(songs_dir) = get_songs_dir() else {
+        eprintln!("[sync] songs_dir не получен");
+        return tracks;
+    };
+    eprintln!("[sync] songs_dir: {:?}", songs_dir);
+
+    // 1. Обработка вложенных папок (распаковка .osz уже сделана)
     if let Ok(entries) = fs::read_dir(&songs_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
+                eprintln!("[sync] Обрабатываем папку: {:?}", path);
                 process_and_flatten_folder(&path, &songs_dir);
             }
         }
+    } else {
+        eprintln!("[sync] Не удалось прочитать songs_dir");
+        return tracks;
     }
 
-    fs::read_dir(&songs_dir)
-        .into_iter()
-        .flat_map(|entries| entries.filter_map(Result::ok))
+    // 2. Сбор всех аудиофайлов в корне songs_dir (после распаковки)
+    let Ok(entries) = fs::read_dir(&songs_dir) else {
+        eprintln!("[sync] Не удалось прочитать songs_dir повторно");
+        return tracks;
+    };
+
+    let audio_files: Vec<(String, PathBuf)> = entries
+        .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| path.is_file())
         .filter_map(|path| {
-            let ext = extension(&path).to_ascii_lowercase();
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
 
             if matches!(ext.as_str(), "avi" | "mp4") {
-                convert_video_to_webm(&path);
+                eprintln!("[sync] Конвертируем видео: {:?}", path);
+                let _ = convert_video_to_webm(&path);
                 return None;
             }
+
             if !TRACK_AUDIO_EXTENSIONS.contains(&ext.as_str()) {
                 return None;
             }
 
-            trim_silence(&path).ok();
-            normalize_audio_volume(&path).ok();
+            // Обрезка тишины и нормализация (игнорируем ошибки, но логируем)
+            if let Err(e) = trim_silence(&path) {
+                eprintln!("[sync] Ошибка обрезки тишины {}: {}", path.display(), e);
+            }
+            if let Err(e) = normalize_audio_volume(&path) {
+                eprintln!("[sync] Ошибка нормализации {}: {}", path.display(), e);
+            }
 
             let name = path
                 .file_name()
                 .and_then(|name| name.to_str())
                 .unwrap_or("Audio");
-            Some((extract_song_title(name), path))
+            let title = extract_song_title(name);
+            eprintln!("[sync] Найден аудиофайл: {} -> {}", name, title);
+            Some((title, path))
         })
-        .enumerate()
-        .map(|(id, (name, path))| build_track(id, name, path))
-        .collect()
+        .collect();
+
+    // 3. Создание треков
+    for (id, (title, path)) in audio_files.into_iter().enumerate() {
+        let track = build_track(id, title, path);
+        eprintln!("[sync] Создан трек #{}: {}", id, track.name);
+        tracks.push(track);
+    }
+
+    eprintln!("[sync] Всего найдено треков: {}", tracks.len());
+    tracks
 }
 
 fn trim_silence(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -551,21 +586,36 @@ pub fn load_saved_tracks() -> Vec<Track> {
 
 pub fn save_tracks_to_disk(tracks: &[Track]) {
     let Some(dirs) = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp") else {
+        eprintln!("[save] ProjectDirs не получены");
         return;
     };
 
-    let _ = fs::create_dir_all(dirs.config_dir());
-    let path = dirs.config_dir().join("playlists.json");
-    let saved: Vec<_> = tracks
+    let config_dir = dirs.config_dir();
+    if let Err(e) = std::fs::create_dir_all(config_dir) {
+        eprintln!("[save] Не удалось создать config_dir: {}", e);
+        return;
+    }
+
+    let path = config_dir.join("playlists.json");
+    eprintln!("[save] Сохраняем {} треков в {:?}", tracks.len(), path);
+
+    let saved: Vec<SavedTrack> = tracks
         .iter()
-        .filter_map(|track| track.path.as_ref().map(|path| SavedTrack {
+        .filter_map(|track| track.path.as_ref().map(|p| SavedTrack {
             name: track.name.clone(),
-            path: path.to_string_lossy().into_owned(),
+            path: p.to_string_lossy().to_string(),
         }))
         .collect();
 
-    if let Ok(json) = serde_json::to_string(&saved) {
-        let _ = fs::write(path, json);
+    match serde_json::to_string(&saved) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&path, json) {
+                eprintln!("[save] Ошибка записи: {}", e);
+            } else {
+                eprintln!("[save] Успешно сохранено");
+            }
+        }
+        Err(e) => eprintln!("[save] Ошибка сериализации: {}", e),
     }
 }
 

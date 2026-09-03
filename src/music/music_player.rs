@@ -339,6 +339,7 @@ if let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(&bytes)) {
         });
         let fresh = rx.await.unwrap_or_default();
         tracks.set(fresh);
+                                eprintln!("[sync-btn] После tracks.set: количество треков = {}", tracks.read().len());
         save_tracks_to_disk(&tracks.read());
     }
 }

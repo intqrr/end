@@ -1,18 +1,26 @@
 use dioxus::prelude::*;
 use dioxus::desktop::{Config, WindowBuilder};
-use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
+
 mod music;
 use music::*;
+
 const TAILWIND_CSS: &str = include_str!("../assets/tailwind.css");
 const MAKISE_BYTES: &[u8] = include_bytes!("../assets/makise.png");
+
 fn makise_data_uri() -> String {
-    let base64 = base64::encode(MAKISE_BYTES);
+    let base64 = BASE64.encode(MAKISE_BYTES);
     format!("data:image/png;base64,{}", base64)
 }
-use std::path::PathBuf;
 
 fn main() {
+    if let Some(dirs) = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp") {
+        eprintln!("Config dir: {:?}", dirs.config_dir());
+        eprintln!("Data dir: {:?}", dirs.data_dir());
+    } else {
+        eprintln!("ProjectDirs не получены");
+    }
     std::env::set_var("GTK_THEME", "Adwaita:dark");
 
     let audio_port = spawn_audio_server();
