@@ -1,5 +1,5 @@
 [package]
-name = "coach"
+name = "end"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,6 +13,7 @@ tokio = { version = "1.53.1", features = ["rt", "fs"] }
 zip = { version = "9.0.0-pre3", default-features = false, features = ["deflate", "lzma"] }
 regex = "1.0"
 ffmpeg-sidecar = "2.5.2"
+base64="0.23.1"
 
 [features]
 default = ["desktop"]

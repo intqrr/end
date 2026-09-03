@@ -1,9 +1,15 @@
 use dioxus::prelude::*;
 use dioxus::desktop::{Config, WindowBuilder};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 mod music;
 use music::*;
-const TAILWIND_CSS: Asset = asset!("assets/tailwind.css");
-const MAKISE: Asset = asset!("assets/makise.png");
+const TAILWIND_CSS: &str = include_str!("../assets/tailwind.css");
+const MAKISE_BYTES: &[u8] = include_bytes!("../assets/makise.png");
+fn makise_data_uri() -> String {
+    let base64 = base64::encode(MAKISE_BYTES);
+    format!("data:image/png;base64,{}", base64)
+}
 use std::path::PathBuf;
 
 fn main() {
@@ -31,9 +37,9 @@ fn App() -> Element {
     let is_backdrop_active = is_menu_open() || is_modal_open();
 
     rsx! {
-        document::Link { rel: "stylesheet", href: TAILWIND_CSS }
+        style { "{TAILWIND_CSS}" }
 
-        img { src: MAKISE, alt: "maki", class: "makise" }
+        img { src: "{makise_data_uri()}", alt: "maki", class: "makise" }
 
         header { class: "app-header",
             button {

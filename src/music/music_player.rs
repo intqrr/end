@@ -11,9 +11,9 @@ use data::{
 };
 use super::audio_server::unregister_track;
 
-const MUSIC_BASE_CSS: Asset = asset!("assets/music_base.css");
-const MUSIC_VISUAL_CSS: Asset = asset!("assets/music_visual.css");
-const MUSIC_CONTROLS_CSS: Asset = asset!("assets/music_controls.css");
+const MUSIC_BASE_CSS: &str = include_str!("../../assets/music_base.css");
+const MUSIC_VISUAL_CSS: &str = include_str!("../../assets/music_visual.css");
+const MUSIC_CONTROLS_CSS: &str = include_str!("../../assets/music_controls.css");
 
 const FORMAT_TIME_JS: &str = r#"
 function fmtTime(s) {
@@ -192,9 +192,9 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
 
     rsx! {
         script { "{FORMAT_TIME_JS}" }
-    document::Link { rel: "stylesheet", href: MUSIC_BASE_CSS }
-    document::Link { rel: "stylesheet", href: MUSIC_VISUAL_CSS }
-    document::Link { rel: "stylesheet", href: MUSIC_CONTROLS_CSS }
+        style { "{MUSIC_BASE_CSS}" }
+        style { "{MUSIC_VISUAL_CSS}" }
+        style { "{MUSIC_CONTROLS_CSS}" }
 
 audio {
     id: "audio-player",
