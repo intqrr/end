@@ -52,7 +52,19 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
         let _ = document::eval(&js);
     });
     let mut current_track_index = use_signal(|| Option::<usize>::None);
-    let is_shuffle = use_signal(|| false);
+    let mut is_shuffle = use_signal(|| {
+        let settings = data::load_settings();
+        settings.shuffle
+    });
+    use_effect(move || {
+        let shuffle = is_shuffle();
+        let settings = data::load_settings();
+        let new_settings = data::Settings {
+            volume: settings.volume,
+            shuffle,
+        };
+        data::save_settings(&new_settings);
+    });
     let mut is_playing = use_signal(|| false);
     let mut shuffle_history = use_signal(Vec::<usize>::new);
     let mut active_visual = use_signal(|| Option::<(String, bool)>::None);

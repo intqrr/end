@@ -53,7 +53,6 @@ pub fn PlayerControls(
                             min: "0",
                             max: "1",
                             step: "0.01",
-                            value: "1",
                             oninput: move |evt| {
                                 let val: f64 = evt.value().parse().unwrap_or(1.0);
                                 let js = format!(r#"
@@ -61,9 +60,10 @@ pub fn PlayerControls(
                                     if (a) a.volume = {val};
                                 "#);
                                 let _ = document::eval(&js);
-                                // Сохраняем в конфиг
+                                
                                 spawn(async move {
-                                    let settings = data::Settings { volume: val };
+                                    let mut settings = data::load_settings();
+                                    settings.volume = val;
                                     data::save_settings(&settings);
                                 });
                             }

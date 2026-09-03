@@ -8,11 +8,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub volume: f64,
+    pub shuffle: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { volume: 1.0 }
+        Self {
+            volume: 1.0,
+            shuffle: false,
+        }
     }
 }
 
@@ -494,30 +498,12 @@ pub fn sync_tracks() -> Vec<Track> {
     };
     eprintln!("[sync] songs_dir: {:?}", songs_dir);
 
-    // 🔍 Читаем содержимое songs_dir
-    eprintln!("[sync] Читаем songs_dir...");
+    // === 1. Обработка вложенных папок ===
+    eprintln!("[sync] Чтение songs_dir для обработки папок...");
     let entries = match fs::read_dir(&songs_dir) {
-        Ok(entries) => {
-            eprintln!("[sync] songs_dir прочитан успешно");
-            entries
-        }
+        Ok(e) => e,
         Err(e) => {
             eprintln!("[sync] Ошибка чтения songs_dir: {}", e);
-            return tracks;
-        }
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        eprintln!("[sync] Найден элемент: {:?}, is_dir={}", path, path.is_dir());
-    }
-
-    eprintln!("[sync] Начинаем обработку папок...");
-    // Обработка папок
-    let entries = match fs::read_dir(&songs_dir) {
-        Ok(entries) => entries,
-        Err(e) => {
-            eprintln!("[sync] Ошибка повторного чтения songs_dir: {}", e);
             return tracks;
         }
     };
@@ -532,17 +518,85 @@ pub fn sync_tracks() -> Vec<Track> {
         }
     }
 
-    eprintln!("[sync] Обработка папок завершена. Начинаем сбор аудиофайлов...");
+    // === 2. Сбор аудиофайлов из корня ===
+    eprintln!("[sync] Обработка папок завершена. Начинаем сбор аудиофайлов из корня...");
 
     let entries = match fs::read_dir(&songs_dir) {
-        Ok(entries) => entries,
+        Ok(e) => e,
         Err(e) => {
-            eprintln!("[sync] Ошибка чтения songs_dir для аудио: {}", e);
+            eprintln!("[sync] Ошибка повторного чтения songs_dir: {}", e);
             return tracks;
         }
     };
 
-    // ... остальной код (сбор аудиофайлов) ...
+    // Собираем все файлы в вектор для логирования
+    let files: Vec<_> = entries.filter_map(Result::ok).collect();
+    eprintln!("[sync] Всего элементов в songs_dir после обработки: {}", files.len());
+
+    let mut audio_files: Vec<(String, PathBuf)> = Vec::new();
+
+    for entry in files {
+        let path = entry.path();
+        if !path.is_file() {
+            eprintln!("[sync] Пропускаем (не файл): {:?}", path);
+            continue;
+        }
+
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        eprintln!("[sync] Проверяем файл: {:?}, расширение: {}", path, ext);
+
+        // Конвертация видео
+        if matches!(ext.as_str(), "avi" | "mp4") {
+            eprintln!("[sync] Конвертируем видео: {:?}", path);
+            let _ = convert_video_to_webm(&path);
+            continue;
+        }
+
+        // Проверяем аудио-расширение
+        if !AUDIO_EXTENSIONS.contains(&ext.as_str()) {
+            eprintln!("[sync] Пропускаем (не аудио): {:?}", path);
+            continue;
+        }
+
+        // Пропускаем hitsound
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if is_hitsound_name(stem) {
+                eprintln!("[sync] Пропускаем (hitsound): {:?}", path);
+                continue;
+            }
+        }
+
+        // ✅ ВЫЗОВЫ trim_silence И normalize_audio_volume (НЕ ОТКЛЮЧАЕМ)
+        if let Err(e) = trim_silence(&path) {
+            eprintln!("[sync] Ошибка обрезки тишины {}: {}", path.display(), e);
+        }
+        if let Err(e) = normalize_audio_volume(&path) {
+            eprintln!("[sync] Ошибка нормализации {}: {}", path.display(), e);
+        }
+
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("Audio");
+        let title = extract_song_title(name);
+        eprintln!("[sync] Найден аудиофайл: {} -> {}", name, title);
+        audio_files.push((title, path));
+    }
+
+    eprintln!("[sync] Всего найдено аудиофайлов: {}", audio_files.len());
+
+    // === 3. Создание треков ===
+    for (id, (title, path)) in audio_files.into_iter().enumerate() {
+        let track = build_track(id, title, path);
+        eprintln!("[sync] Создан трек #{}: {}", id, track.name);
+        tracks.push(track);
+    }
+
+    eprintln!("[sync] Всего треков: {}", tracks.len());
     eprintln!("[sync] КОНЕЦ sync_tracks");
     tracks
 }
