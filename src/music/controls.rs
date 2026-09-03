@@ -68,33 +68,26 @@ pub fn PlayerControls(
 
             div { class: "progress-container",
                 span { id: "music-current-time", class: "time-text", "0:00" }
-input {
-    r#type: "range",
-    id: "music-progress-bar",
-    min: "0",
-    max: "100",
-    // ВАЖНО: Убираем атрибут value из Rust, чтобы Dioxus не перерисовывал его при клике!
-    // Используем initial_value или вовсе не передаем value через Dioxus:
-    initial_value: "0",
-    oninput: move |_| {
-        let js = r#"
-            const a = document.getElementById('audio-player');
-            const p = document.getElementById('music-progress-bar');
-            if (a && p && !isNaN(a.duration) && a.duration > 0) {
-                const pct = parseFloat(p.value);
-                // 1. Вычисляем новое время
-                const newTime = (a.duration * pct) / 100;
-
-                // 2. Устанавливаем время трека
-                a.currentTime = newTime;
-
-                // 3. Обновляем визуальный градиент
-                p.style.background = `linear-gradient(to right, #22c55e ${pct}%, #38383e ${pct}%)`;
-            }
-        "#;
-        let _ = document::eval(js);
-    }
-}
+                input {
+                    r#type: "range",
+                    id: "music-progress-bar",
+                    min: "0",
+                    max: "100",
+                    initial_value: "0",
+                    oninput: move |_| {
+                        let js = r#"
+                            const a = document.getElementById('audio-player');
+                            const p = document.getElementById('music-progress-bar');
+                            if (a && p && !isNaN(a.duration) && a.duration > 0) {
+                                const pct = parseFloat(p.value);
+                                const newTime = (a.duration * pct) / 100;
+                                a.currentTime = newTime;
+                                p.style.background = `linear-gradient(to right, #22c55e ${pct}%, #38383e ${pct}%)`;
+                            }
+                        "#;
+                        let _ = document::eval(js);
+                    }
+                }
                 span { id: "music-duration-time", class: "time-text", "0:00" }
             }
         }

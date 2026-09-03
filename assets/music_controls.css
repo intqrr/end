@@ -1,15 +1,14 @@
-/* Контейнер контролов – прижат к низу .music-main */
 .player-controls {
     background: var(--bg-primary);
     border-radius: var(--radius-md);
-    padding: 0.875rem 1.25rem; /* 14px 20px */
+    padding: 0.875rem 1.25rem;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem; /* 12px */
+    gap: 0.75rem;
     width: var(--control-width);
     max-width: 800px;
     box-sizing: border-box;
-    margin-top: auto; /* прижимает к низу */
+    margin-top: auto;
     margin-bottom: 2.5%;
     align-self: center;
 }
@@ -26,17 +25,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 1rem; /* 16px */
-    /* компенсация для визуального центрирования кнопки Play */
-    margin-left: 3.75rem; /* 60px */
+    gap: 1rem;
+    margin-left: 3.75rem;
 }
 
-/* Иконки-кнопки (перемешать, предыдущий, следующий) */
 .btn-icon {
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 1rem; /* 16px */
+    font-size: 1rem;
     cursor: pointer;
     padding: 0.25rem;
     transition: color 0.15s;
@@ -50,9 +47,8 @@
     color: var(--accent);
 }
 
-/* Кнопка Play / Пауза */
 .btn-play {
-    width: 2.5rem;  /* 40px */
+    width: 2.5rem;
     height: 2.5rem;
     border-radius: 50%;
     background: var(--text-primary);
@@ -72,54 +68,52 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.25rem; /* 4px */
-    height: 0.75rem; /* 12px */
+    gap: 0.25rem;
+    height: 0.75rem;
 }
 
 .pause-bar {
-    width: 0.1875rem; /* 3px */
-    height: 0.75rem; /* 12px */
+    width: 0.1875rem;
+    height: 0.75rem;
     background-color: #000000;
-    border-radius: 0.0625rem; /* 1px */
+    border-radius: 0.0625rem;
 }
 
 .play-symbol {
     color: #000000;
-    font-size: 0.9375rem; /* 15px */
-    margin-left: 0.1875rem; /* 3px */
+    font-size: 0.9375rem;
+    margin-left: 0.1875rem;
     line-height: 1;
     display: inline-block;
 }
 
-/* Блок громкости */
 .volume-container {
     display: flex;
     align-items: center;
-    gap: 0.5rem; /* 8px */
-    margin-left: 0.75rem; /* 12px */
+    gap: 0.5rem;
+    margin-left: 0.75rem;
 }
 
 .volume-icon {
     color: var(--text-muted);
-    font-size: 0.8125rem; /* 13px */
+    font-size: 0.8125rem;
     font-family: sans-serif;
 }
 
-/* Слайдер громкости */
 .volume-slider {
     -webkit-appearance: none;
     appearance: none;
-    width: 4.0625rem; /* 65px */
-    height: 0.25rem; /* 4px */
+    width: 4.0625rem;
+    height: 0.25rem;
     background: var(--bg-hover);
-    border-radius: 0.125rem; /* 2px */
+    border-radius: 0.125rem;
     outline: none;
 }
 
 .volume-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 0.625rem; /* 10px */
+    width: 0.625rem;
     height: 0.625rem;
     border-radius: 50%;
     background: var(--accent);
@@ -135,22 +129,20 @@
     cursor: pointer;
 }
 
-/* Контейнер прогресс-бара */
 .progress-container {
     display: flex;
     align-items: center;
-    gap: 0.75rem; /* 12px */
+    gap: 0.75rem;
     width: 100%;
 }
 
 .time-text {
     color: var(--text-dim);
-    font-size: 0.75rem; /* 12px */
+    font-size: 0.75rem;
     font-family: monospace;
-    min-width: 2rem; /* 32px */
+    min-width: 2rem;
 }
 
-/* Ползунок прогресса */
 #music-progress-bar {
     -webkit-appearance: none;
     appearance: none;
@@ -167,7 +159,7 @@
 #music-progress-bar::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 0.75rem; /* 12px */
+    width: 0.75rem;
     height: 0.75rem;
     border-radius: 50%;
     background: var(--accent);

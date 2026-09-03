@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::io::{Read, Seek, SeekFrom};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone)]
 pub struct TrackMedia {
@@ -12,9 +13,13 @@ pub struct TrackMedia {
 
 static TRACK_REGISTRY: OnceLock<Mutex<HashMap<usize, TrackMedia>>> = OnceLock::new();
 static AUDIO_SERVER_PORT: OnceLock<u16> = OnceLock::new();
-use std::sync::atomic::{AtomicU64, Ordering};
-
 static CACHE_BUSTER: AtomicU64 = AtomicU64::new(0);
+
+enum MediaKind {
+    Audio,
+    Video,
+    Cover(usize),
+}
 
 fn cors_headers() -> Vec<tiny_http::Header> {
     vec![
@@ -25,10 +30,13 @@ fn cors_headers() -> Vec<tiny_http::Header> {
     ]
 }
 
-enum MediaKind {
-    Audio,
-    Video,
-    Cover(usize),
+// пустой ответ с нужным статусом и CORS-заголовками — используется для всех ошибок и preflight-запросов
+fn empty_response(status: u16) -> tiny_http::Response<std::io::Empty> {
+    let mut response = tiny_http::Response::empty(status);
+    for header in cors_headers() {
+        response.add_header(header);
+    }
+    response
 }
 
 pub fn update_cache_buster() {
@@ -44,7 +52,6 @@ pub fn get_cache_buster() -> u64 {
 }
 
 fn parse_request_kind(url: &str) -> Option<(MediaKind, usize)> {
-    // Убираем query-параметры (всё, что после '?')
     let path = url.split('?').next().unwrap_or(url);
 
     if let Some(rest) = path.strip_prefix("/video/") {
@@ -71,7 +78,7 @@ pub fn spawn_audio_server() -> u16 {
         loop {
             let request = match server.recv() {
                 Ok(r) => r,
-                Err(_) => break, // сервер остановлен
+                Err(_) => break,
             };
 
             std::thread::spawn(move || {
@@ -85,20 +92,14 @@ pub fn spawn_audio_server() -> u16 {
 
 fn handle_request(request: tiny_http::Request) {
     if request.method() == &tiny_http::Method::Options {
-        let mut response = tiny_http::Response::empty(204);
-        for h in cors_headers() {
-            response.add_header(h);
-        }
-        let _ = request.respond(response);
+        let _ = request.respond(empty_response(204));
         return;
     }
 
     let url = request.url().to_string();
 
     let Some((kind, id)) = parse_request_kind(&url) else {
-        let mut response = tiny_http::Response::empty(404);
-        for h in cors_headers() { response.add_header(h); }
-        let _ = request.respond(response);
+        let _ = request.respond(empty_response(404));
         return;
     };
 
@@ -112,16 +113,12 @@ fn handle_request(request: tiny_http::Request) {
     };
 
     let Some(file_path) = file_path else {
-        let mut response = tiny_http::Response::empty(404);
-        for h in cors_headers() { response.add_header(h); }
-        let _ = request.respond(response);
+        let _ = request.respond(empty_response(404));
         return;
     };
 
     let Ok(mut file) = std::fs::File::open(&file_path) else {
-        let mut response = tiny_http::Response::empty(404);
-        for h in cors_headers() { response.add_header(h); }
-        let _ = request.respond(response);
+        let _ = request.respond(empty_response(404));
         return;
     };
 
@@ -134,6 +131,7 @@ fn handle_request(request: tiny_http::Request) {
         .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case("Range"))
         .map(|h| h.value.as_str().to_string());
 
+    // частичная отдача файла по Range — нужна для перемотки аудио/видео в браузере
     if let Some(range_str) = range_header {
         if let Some(range) = range_str.strip_prefix("bytes=") {
             let mut parts = range.split('-');
@@ -160,19 +158,13 @@ fn handle_request(request: tiny_http::Request) {
                 let len = end.saturating_sub(start) + 1;
                 let mut buf = vec![0u8; len as usize];
 
-                if file.seek(SeekFrom::Start(start)).is_ok()
-                    && file.read_exact(&mut buf).is_ok()
-                {
-                    let content_type = tiny_http::Header::from_bytes(
-                        &b"Content-Type"[..], mime.as_bytes(),
-                    ).unwrap();
+                if file.seek(SeekFrom::Start(start)).is_ok() && file.read_exact(&mut buf).is_ok() {
+                    let content_type = tiny_http::Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap();
                     let content_range = tiny_http::Header::from_bytes(
                         &b"Content-Range"[..],
                         format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
                     ).unwrap();
-                    let accept_ranges = tiny_http::Header::from_bytes(
-                        &b"Accept-Ranges"[..], &b"bytes"[..],
-                    ).unwrap();
+                    let accept_ranges = tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap();
 
                     let mut response = tiny_http::Response::from_data(buf)
                         .with_status_code(206)
@@ -191,12 +183,8 @@ fn handle_request(request: tiny_http::Request) {
         }
     }
 
-    let content_type = tiny_http::Header::from_bytes(
-        &b"Content-Type"[..], mime.as_bytes(),
-    ).unwrap();
-    let accept_ranges = tiny_http::Header::from_bytes(
-        &b"Accept-Ranges"[..], &b"bytes"[..],
-    ).unwrap();
+    let content_type = tiny_http::Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap();
+    let accept_ranges = tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap();
 
     let mut response = tiny_http::Response::from_file(file)
         .with_header(content_type)

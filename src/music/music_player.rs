@@ -102,8 +102,6 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
     };
 
     let active_track = current_track_index().and_then(|i| tracks.read().get(i).cloned());
-
-    // 2. Создаем отдельный клон специально для use_effect
     let active_track_for_effect = active_track.clone();
 
     use_effect(move || {
@@ -123,11 +121,9 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
     const a = document.getElementById('audio-player');
     const v = document.getElementById('track-visual-video');
     if (!a) return;
-
-    // Функция для одновременного запуска
     function playTogether() {{
         if (v) {{
-            const videoReady = v.readyState >= 2; // HAVE_CURRENT_DATA
+            const videoReady = v.readyState >= 2;
             const audioReady = a.readyState >= 2;
             if (videoReady && audioReady) {{
                 a.play().catch(() => {{}});
@@ -140,29 +136,21 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
         }}
         return false;
     }}
-
-    // Если изменился аудио-источник
     if (a.dataset.src !== "{current_src}") {{
         a.dataset.src = "{current_src}";
         a.src = "{current_src}";
         a.load();
-
-        // Если есть видео, загружаем его
         if (v && "{current_src_video}" !== "") {{
             v.dataset.src = "{current_src_video}";
             v.src = "{current_src_video}";
             v.load();
-            // Очищаем старый обработчик, чтобы не накапливались
             v.onloadedmetadata = function() {{
                 if ({playing}) {{
-                    // Пытаемся запустить одновременно, как только видео загрузит метаданные
-                    // Но аудио тоже может ещё грузиться – используем setInterval для проверки
                     let attempts = 0;
                     const checkAndPlay = setInterval(() => {{
                         if (playTogether()) {{
                             clearInterval(checkAndPlay);
                         }} else if (++attempts > 20) {{
-                            // Через 2 секунды форсируем запуск (если одно из медиа всё ещё не готово)
                             a.play().catch(() => {{}});
                             if (v) v.play().catch(() => {{}});
                             clearInterval(checkAndPlay);
@@ -171,16 +159,13 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
                 }}
             }};
         }} else {{
-            // Нет видео – просто запускаем аудио
             if ({playing}) {{
                 a.play().catch(() => {{}});
             }}
         }}
     }} else {{
-        // Тот же трек, меняем состояние воспроизведения
         if ({playing}) {{
             if (v && "{current_src_video}" !== "") {{
-                // Если видео уже загружено, пытаемся запустить вместе
                 if (v.readyState >= 2 && a.readyState >= 2) {{
                     a.play().catch(() => {{}});
                     v.play().catch(() => {{}});
@@ -251,8 +236,6 @@ audio {
     div {
         class: if is_open() { "music-window open" } else { "music-window" },
 
-
-        // 1. Компактная боковая панель (только 2 иконки)
         aside { class: "music-sidebar",
 label { class: "music-sidebar-button", title: "Импортировать файлы",
     "+"
@@ -275,12 +258,10 @@ onchange: move |evt| {
                 };
                 let Some(bytes) = bytes else { continue };
 
-                // Папка назначения: имя osz без расширения (уже без ведущих цифр)
                 let title = data::extract_song_title(&file_name);
                 let extract_dir = dir.join(&title);
                 let _ = std::fs::create_dir_all(&extract_dir);
 
-                // Распаковываем zip в папку
 if let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(&bytes)) {
     eprintln!("Архив открыт, количество записей: {}", archive.len());
     for i in 0..archive.len() {
@@ -292,7 +273,6 @@ if let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(&bytes)) {
             }
         };
 
-        // Получаем имя записи с обработкой ошибки
         let name = match entry.name() {
             Ok(name) => name.to_string(),
             Err(e) => {
@@ -307,11 +287,9 @@ if let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(&bytes)) {
             continue;
         }
 
-        // Безопасный путь
         let entry_path = if let Some(enclosed) = entry.enclosed_name() {
             enclosed.to_path_buf()
         } else {
-            // Если enclosed_name не сработал, используем сырое имя
             let raw = name.trim_start_matches('/').trim_start_matches("./");
             std::path::PathBuf::from(raw)
         };
@@ -341,9 +319,7 @@ if let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(&bytes)) {
 } else {
     eprintln!("Не удалось открыть архив");
 }
-                // Трек соберётся при следующем sync_tracks()
             } else {
-                // Обработка обычных аудиофайлов
                 let path = file.path();
                 if path.exists() {
                     if let Some(dest) = import_file_to_songs_dir(&path, &file_name) {
@@ -356,7 +332,6 @@ if let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(&bytes)) {
             }
         }
 
-        // ❗ СИНХРОНИЗАЦИЯ – вынесена в отдельный поток ❗
         let (tx, rx) = tokio::sync::oneshot::channel();
         std::thread::spawn(move || {
             let fresh = data::sync_tracks();
@@ -405,16 +380,14 @@ button {
             shuffle_history.set(Vec::new());
             is_playing.set(false);
             save_tracks_to_disk(&tracks.read());
-            // ✅ СБРАСЫВАЕМ ФЛАГ, чтобы кнопка вернулась в исходное состояние
             is_syncing.set(false);
             eprintln!("[sync-btn] Синхронизация завершена");
-        }); // ← точка с запятой обязательна
+        });
     },
     if is_syncing() { "…" } else { "↻" }
 }
         }
 
-        // 2. Основная рабочая область
         main { class: "music-content",
             div { class: "music-main",
                 TrackVisual { active_visual }
@@ -479,8 +452,6 @@ spawn(async move {
                 }
                 if let Some(file_name) = p.file_name().and_then(|s| s.to_str()) {
                     let file_name_lower = file_name.to_ascii_lowercase();
-
-                    // Проверяем, начинается ли имя файла с stem_lower и имеет допустимое расширение
                     let is_audio = file_name_lower.ends_with(".mp3") || file_name_lower.ends_with(".ogg") ||
                                    file_name_lower.ends_with(".wav") || file_name_lower.ends_with(".flac") ||
                                    file_name_lower.ends_with(".m4a") || file_name_lower.ends_with(".aac");
@@ -491,14 +462,8 @@ spawn(async move {
                     let is_normalized = file_name_lower.ends_with(".normalized");
 
                     if is_normalized {
-                        // Проверяем, что этот .normalized файл принадлежит нашему треку
-                        // Имя маркера: либо audio_name.normalized, либо audio_name.ext.normalized
-                        // Проще: если file_name_lower начинается с stem_lower и заканчивается .normalized
                         if file_name_lower.starts_with(&stem_lower) {
-                            // Убираем .normalized в конце
                             let base = file_name_lower.trim_end_matches(".normalized");
-                            // Проверяем, что base либо равен stem_lower, либо начинается с stem_lower и имеет допустимое расширение
-                            // Например, track.mp3 или track_1.jpg
                             if base == stem_lower
                                 || base.starts_with(&format!("{}_", stem_lower))
                                 || base.starts_with(&format!("{}.", stem_lower))
@@ -507,7 +472,6 @@ spawn(async move {
                             }
                         }
                     } else if is_audio || is_image || is_video {
-                        // Проверяем, что имя начинается с stem_lower и имеет допустимое продолжение
                         if file_name_lower.starts_with(&stem_lower) {
                             let rest = &file_name_lower[stem_lower.len()..];
                             if rest.is_empty()
@@ -527,7 +491,6 @@ spawn(async move {
 });
 },
 }
-
         button {
             class: "music-close",
             onclick: move |_| is_open.set(false),
