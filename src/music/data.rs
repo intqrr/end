@@ -104,52 +104,138 @@ where
     Command::new(ffmpeg_path()).args(args).output()
 }
 
-fn normalize_audio_volume(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    if is_already_normalized(path) {
+fn trim_silence(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let abs_path = path.canonicalize().map_err(|e| format!("canonicalize failed: {}", e))?;
+    eprintln!("[trim_silence] Обработка файла: {}", abs_path.display());
+
+    if !abs_path.exists() {
+        return Err(format!("file does not exist: {:?}", abs_path).into());
+    }
+
+    if is_already_normalized(&abs_path) {
         return Ok(());
     }
-    if !path.exists() {
-        return Err(format!("source file does not exist: {path:?}").into());
+
+    let ext = extension(&abs_path);
+    let temp = abs_path.with_extension(format!("trimmed.tmp.{ext}"));
+    let _ = fs::remove_file(&temp);
+
+    let ffmpeg = ffmpeg_path();
+    eprintln!("[trim_silence] ffmpeg path: {:?}", ffmpeg);
+
+    let output = Command::new(&ffmpeg)
+        .arg("-y")
+        .arg("-i")
+        .arg(abs_path.as_os_str())
+        .arg("-af")
+        .arg("silenceremove=1:0:-30dB,adelay=400|400")
+        .arg("-vn")
+        .arg("-c:a")
+        .arg("libmp3lame")
+        .arg("-q:a")
+        .arg("2")
+        .arg(temp.as_os_str())
+        .output()?;
+
+    eprintln!("[trim_silence] ffmpeg stdout: {}", String::from_utf8_lossy(&output.stdout));
+    eprintln!("[trim_silence] ffmpeg stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    if !output.status.success() {
+        let _ = fs::remove_file(&temp);
+        return Err(format!("ffmpeg silenceremove failed for {:?}", abs_path).into());
     }
 
-    let ext = extension(path).to_ascii_lowercase();
-    let temp_path = path.with_extension(format!("norm.tmp.{ext}"));
+    if !temp.exists() {
+        return Err(format!("ffmpeg did not create output file: {:?}", temp).into());
+    }
+
+    fs::rename(temp, &abs_path)?;
+    mark_as_normalized(&abs_path)?;
+    Ok(())
+}
+
+fn normalize_audio_volume(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let abs_path = path.canonicalize().map_err(|e| format!("canonicalize failed: {}", e))?;
+    eprintln!("[normalize] Обработка файла: {}", abs_path.display());
+
+    if !abs_path.exists() {
+        return Err(format!("file does not exist: {:?}", abs_path).into());
+    }
+
+    if is_already_normalized(&abs_path) {
+        return Ok(());
+    }
+
+    let ext = extension(&abs_path).to_ascii_lowercase();
+    let temp_path = abs_path.with_extension(format!("norm.tmp.{ext}"));
     let _ = fs::remove_file(&temp_path);
 
+    let ffmpeg = ffmpeg_path();
+    eprintln!("[normalize] ffmpeg path: {:?}", ffmpeg);
+
+    let path_str = abs_path.to_string_lossy().to_string();
+    let temp_str = temp_path.to_string_lossy().to_string();
+
     let mut args = vec![
-        "-y".into(),
-        "-hide_banner".into(),
-        "-loglevel".into(),
-        "error".into(),
-        "-i".into(),
-        path.as_os_str().to_os_string(),
-        "-af".into(),
-        "loudnorm=I=-10:TP=-1.5:LRA=11".into(),
-        "-vn".into(),
+        "-y".to_string(),
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(),
+        "error".to_string(),
+        "-i".to_string(),
+        path_str,
+        "-af".to_string(),
+        "loudnorm=I=-10:TP=-1.5:LRA=11".to_string(),
+        "-vn".to_string(),
     ];
 
-    args.extend(
-        match ext.as_str() {
-            "mp3" => vec!["-c:a".into(), "libmp3lame".into(), "-q:a".into(), "2".into()],
-            "flac" => vec!["-c:a".into(), "flac".into()],
-            "ogg" | "oga" => vec!["-c:a".into(), "libvorbis".into(), "-q:a".into(), "6".into()],
-            "wav" => vec!["-c:a".into(), "pcm_s16le".into()],
-            _ => vec!["-c:a".into(), "libmp3lame".into(), "-q:a".into(), "2".into()],
-        },
-    );
-    args.push(temp_path.as_os_str().to_os_string());
+    let ext_str = ext.as_str();
+    let codec_args: Vec<String> = match ext_str {
+        "mp3" => vec![
+            "-c:a".to_string(),
+            "libmp3lame".to_string(),
+            "-q:a".to_string(),
+            "2".to_string(),
+        ],
+        "flac" => vec!["-c:a".to_string(), "flac".to_string()],
+        "ogg" | "oga" => vec![
+            "-c:a".to_string(),
+            "libvorbis".to_string(),
+            "-q:a".to_string(),
+            "6".to_string(),
+        ],
+        "wav" => vec!["-c:a".to_string(), "pcm_s16le".to_string()],
+        _ => vec![
+            "-c:a".to_string(),
+            "libmp3lame".to_string(),
+            "-q:a".to_string(),
+            "2".to_string(),
+        ],
+    };
+    args.extend(codec_args);
+    args.push(temp_str);
 
-    let output = run_ffmpeg(args)?;
+    let output = Command::new(&ffmpeg)
+        .args(&args)
+        .output()?;
+
+    eprintln!("[normalize] ffmpeg stdout: {}", String::from_utf8_lossy(&output.stdout));
+    eprintln!("[normalize] ffmpeg stderr: {}", String::from_utf8_lossy(&output.stderr));
+
     if !output.status.success() {
         let _ = fs::remove_file(&temp_path);
-        return Err(format!("ffmpeg normalization failed for {path:?}: {}", String::from_utf8_lossy(&output.stderr)).into());
+        return Err(format!(
+            "ffmpeg normalization failed for {:?}: {}",
+            abs_path,
+            String::from_utf8_lossy(&output.stderr)
+        )
+            .into());
     }
     if !temp_path.exists() {
-        return Err(format!("ffmpeg did not create output file: {temp_path:?}").into());
+        return Err(format!("ffmpeg did not create output file: {:?}", temp_path).into());
     }
 
-    fs::rename(temp_path, path)?;
-    mark_as_normalized(path)?;
+    fs::rename(temp_path, &abs_path)?;
+    mark_as_normalized(&abs_path)?;
     Ok(())
 }
 
@@ -347,6 +433,9 @@ fn convert_video_to_webm(path: &Path) -> Option<PathBuf> {
 }
 
 pub fn sync_tracks() -> Vec<Track> {
+    if let Err(e) = auto_download() {
+        eprintln!("[sync] Не удалось скачать ffmpeg: {}", e);
+    }
     crate::audio_server::update_cache_buster();
     let mut tracks = Vec::new();
 
@@ -356,7 +445,6 @@ pub fn sync_tracks() -> Vec<Track> {
     };
     eprintln!("[sync] songs_dir: {:?}", songs_dir);
 
-    // 1. Обработка вложенных папок (распаковка .osz уже сделана)
     if let Ok(entries) = fs::read_dir(&songs_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -370,7 +458,6 @@ pub fn sync_tracks() -> Vec<Track> {
         return tracks;
     }
 
-    // 2. Сбор всех аудиофайлов в корне songs_dir (после распаковки)
     let Ok(entries) = fs::read_dir(&songs_dir) else {
         eprintln!("[sync] Не удалось прочитать songs_dir повторно");
         return tracks;
@@ -397,7 +484,13 @@ pub fn sync_tracks() -> Vec<Track> {
                 return None;
             }
 
-            // Обрезка тишины и нормализация (игнорируем ошибки, но логируем)
+            // Проверяем существование файла перед обработкой
+            if !path.exists() {
+                eprintln!("[sync] Файл {} не существует, пропускаем", path.display());
+                return None;
+            }
+
+            // Вызываем обрезку и нормализацию, но игнорируем ошибки, так как трек всё равно создаётся
             if let Err(e) = trim_silence(&path) {
                 eprintln!("[sync] Ошибка обрезки тишины {}: {}", path.display(), e);
             }
@@ -415,7 +508,6 @@ pub fn sync_tracks() -> Vec<Track> {
         })
         .collect();
 
-    // 3. Создание треков
     for (id, (title, path)) in audio_files.into_iter().enumerate() {
         let track = build_track(id, title, path);
         eprintln!("[sync] Создан трек #{}: {}", id, track.name);
@@ -424,41 +516,6 @@ pub fn sync_tracks() -> Vec<Track> {
 
     eprintln!("[sync] Всего найдено треков: {}", tracks.len());
     tracks
-}
-
-fn trim_silence(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    if is_already_normalized(path) {
-        return Ok(());
-    }
-
-    let ext = extension(path);
-    let temp = path.with_extension(format!("trimmed.tmp.{ext}"));
-    let _ = fs::remove_file(&temp);
-
-    let status = Command::new(ffmpeg_path())
-        .args([
-            "-y",
-            "-i",
-            path.to_str().unwrap_or_default(),
-            "-af",
-            "silenceremove=1:0:-30dB,adelay=400|400",
-            "-vn",
-            "-c:a",
-            "libmp3lame",
-            "-q:a",
-            "2",
-            temp.to_str().unwrap_or_default(),
-        ])
-        .status()?;
-
-    if !status.success() {
-        let _ = fs::remove_file(&temp);
-        return Err(format!("ffmpeg silenceremove failed for {path:?}").into());
-    }
-
-    fs::rename(temp, path)?;
-    mark_as_normalized(path)?;
-    Ok(())
 }
 
 fn unique_dest_path(dir: &Path, file_name: &str) -> PathBuf {
