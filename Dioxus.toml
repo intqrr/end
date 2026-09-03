@@ -1,0 +1,8 @@
+[application]
+[web.app]
+title = "coach-gui"
+[web.resource]
+style = []
+script = []
+[web.resource.dev]
+script = []

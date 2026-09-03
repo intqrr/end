@@ -1,0 +1,268 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+use std::io::{Read, Seek, SeekFrom};
+
+#[derive(Clone)]
+pub struct TrackMedia {
+    audio: PathBuf,
+    video: Option<PathBuf>,
+    covers: Vec<PathBuf>,
+}
+
+static TRACK_REGISTRY: OnceLock<Mutex<HashMap<usize, TrackMedia>>> = OnceLock::new();
+static AUDIO_SERVER_PORT: OnceLock<u16> = OnceLock::new();
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static CACHE_BUSTER: AtomicU64 = AtomicU64::new(0);
+
+fn cors_headers() -> Vec<tiny_http::Header> {
+    vec![
+        tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap(),
+        tiny_http::Header::from_bytes(&b"Access-Control-Allow-Methods"[..], b"GET, HEAD, OPTIONS").unwrap(),
+        tiny_http::Header::from_bytes(&b"Access-Control-Allow-Headers"[..], b"Range, Content-Type").unwrap(),
+        tiny_http::Header::from_bytes(&b"Access-Control-Expose-Headers"[..], b"Content-Range, Accept-Ranges, Content-Length").unwrap(),
+    ]
+}
+
+enum MediaKind {
+    Audio,
+    Video,
+    Cover(usize),
+}
+
+pub fn update_cache_buster() {
+    let new_val = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    CACHE_BUSTER.store(new_val, Ordering::Relaxed);
+}
+
+pub fn get_cache_buster() -> u64 {
+    CACHE_BUSTER.load(Ordering::Relaxed)
+}
+
+fn parse_request_kind(url: &str) -> Option<(MediaKind, usize)> {
+    // Убираем query-параметры (всё, что после '?')
+    let path = url.split('?').next().unwrap_or(url);
+
+    if let Some(rest) = path.strip_prefix("/video/") {
+        return rest.parse::<usize>().ok().map(|id| (MediaKind::Video, id));
+    }
+    if let Some(rest) = path.strip_prefix("/track/") {
+        return rest.parse::<usize>().ok().map(|id| (MediaKind::Audio, id));
+    }
+    if let Some(rest) = path.strip_prefix("/cover/") {
+        let mut parts = rest.split('/');
+        let id = parts.next()?.parse::<usize>().ok()?;
+        let idx = parts.next()?.parse::<usize>().ok()?;
+        return Some((MediaKind::Cover(idx), id));
+    }
+    None
+}
+
+pub fn spawn_audio_server() -> u16 {
+    let server = tiny_http::Server::http("127.0.0.1:0").expect("не удалось поднять локальный сервер");
+    let port = server.server_addr().to_ip().unwrap().port();
+    let server = std::sync::Arc::new(server);
+
+    std::thread::spawn(move || {
+        loop {
+            let request = match server.recv() {
+                Ok(r) => r,
+                Err(_) => break, // сервер остановлен
+            };
+
+            std::thread::spawn(move || {
+                handle_request(request);
+            });
+        }
+    });
+
+    port
+}
+
+fn handle_request(request: tiny_http::Request) {
+    if request.method() == &tiny_http::Method::Options {
+        let mut response = tiny_http::Response::empty(204);
+        for h in cors_headers() {
+            response.add_header(h);
+        }
+        let _ = request.respond(response);
+        return;
+    }
+
+    let url = request.url().to_string();
+
+    let Some((kind, id)) = parse_request_kind(&url) else {
+        let mut response = tiny_http::Response::empty(404);
+        for h in cors_headers() { response.add_header(h); }
+        let _ = request.respond(response);
+        return;
+    };
+
+    let file_path = {
+        let guard = track_registry().lock().unwrap();
+        guard.get(&id).and_then(|m| match kind {
+            MediaKind::Audio => Some(m.audio.clone()),
+            MediaKind::Video => m.video.clone(),
+            MediaKind::Cover(idx) => m.covers.get(idx).cloned(),
+        })
+    };
+
+    let Some(file_path) = file_path else {
+        let mut response = tiny_http::Response::empty(404);
+        for h in cors_headers() { response.add_header(h); }
+        let _ = request.respond(response);
+        return;
+    };
+
+    let Ok(mut file) = std::fs::File::open(&file_path) else {
+        let mut response = tiny_http::Response::empty(404);
+        for h in cors_headers() { response.add_header(h); }
+        let _ = request.respond(response);
+        return;
+    };
+
+    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let mime = guess_mime(&file_path);
+
+    let range_header = request
+        .headers()
+        .iter()
+        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case("Range"))
+        .map(|h| h.value.as_str().to_string());
+
+    if let Some(range_str) = range_header {
+        if let Some(range) = range_str.strip_prefix("bytes=") {
+            let mut parts = range.split('-');
+            let start_str = parts.next().unwrap_or("");
+            let end_str = parts.next().unwrap_or("");
+
+            let (start, end) = if start_str.is_empty() {
+                let suffix_len: u64 = end_str.parse().unwrap_or(0);
+                let start = file_len.saturating_sub(suffix_len);
+                (start, file_len.saturating_sub(1))
+            } else {
+                let start: u64 = start_str.parse().unwrap_or(0);
+                let end: u64 = if end_str.is_empty() {
+                    file_len.saturating_sub(1)
+                } else {
+                    end_str.parse().unwrap_or(file_len.saturating_sub(1))
+                };
+                (start, end)
+            };
+
+            let end = end.min(file_len.saturating_sub(1));
+
+            if start <= end {
+                let len = end.saturating_sub(start) + 1;
+                let mut buf = vec![0u8; len as usize];
+
+                if file.seek(SeekFrom::Start(start)).is_ok()
+                    && file.read_exact(&mut buf).is_ok()
+                {
+                    let content_type = tiny_http::Header::from_bytes(
+                        &b"Content-Type"[..], mime.as_bytes(),
+                    ).unwrap();
+                    let content_range = tiny_http::Header::from_bytes(
+                        &b"Content-Range"[..],
+                        format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
+                    ).unwrap();
+                    let accept_ranges = tiny_http::Header::from_bytes(
+                        &b"Accept-Ranges"[..], &b"bytes"[..],
+                    ).unwrap();
+
+                    let mut response = tiny_http::Response::from_data(buf)
+                        .with_status_code(206)
+                        .with_header(content_type)
+                        .with_header(content_range)
+                        .with_header(accept_ranges);
+
+                    for h in cors_headers() {
+                        response.add_header(h);
+                    }
+
+                    let _ = request.respond(response);
+                    return;
+                }
+            }
+        }
+    }
+
+    let content_type = tiny_http::Header::from_bytes(
+        &b"Content-Type"[..], mime.as_bytes(),
+    ).unwrap();
+    let accept_ranges = tiny_http::Header::from_bytes(
+        &b"Accept-Ranges"[..], &b"bytes"[..],
+    ).unwrap();
+
+    let mut response = tiny_http::Response::from_file(file)
+        .with_header(content_type)
+        .with_header(accept_ranges);
+
+    for h in cors_headers() {
+        response.add_header(h);
+    }
+
+    let _ = request.respond(response);
+}
+
+pub fn init_audio_server_port(port: u16) {
+    AUDIO_SERVER_PORT.set(port).expect("порт уже установлен");
+}
+
+pub fn audio_url(id: usize) -> String {
+    let port = *AUDIO_SERVER_PORT.get().expect("сервер ещё не запущен");
+    format!("http://127.0.0.1:{port}/track/{id}?v={}", get_cache_buster())
+}
+
+pub fn video_url(id: usize) -> String {
+    let port = *AUDIO_SERVER_PORT.get().expect("сервер ещё не запущен");
+    format!("http://127.0.0.1:{port}/video/{id}?v={}", get_cache_buster())
+}
+
+pub fn cover_url(id: usize, idx: usize) -> String {
+    let port = *AUDIO_SERVER_PORT.get().expect("сервер ещё не запущен");
+    format!("http://127.0.0.1:{port}/cover/{id}/{idx}?v={}", get_cache_buster())
+}
+
+pub fn track_registry() -> &'static Mutex<HashMap<usize, TrackMedia>> {
+    TRACK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub fn register_track(id: usize, audio_path: PathBuf, video_path: Option<PathBuf>, covers: Vec<PathBuf>) {
+    track_registry().lock().unwrap().insert(id, TrackMedia {
+        audio: audio_path,
+        video: video_path,
+        covers,
+    });
+}
+
+pub fn unregister_track(id: usize) {
+    track_registry().lock().unwrap().remove(&id);
+}
+
+fn guess_mime(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()) {
+        Some(ext) if ext == "mp3" => "audio/mpeg",
+        Some(ext) if ext == "wav" => "audio/wav",
+        Some(ext) if ext == "ogg" => "audio/ogg",
+        Some(ext) if ext == "flac" => "audio/flac",
+        Some(ext) if ext == "m4a" => "audio/mp4",
+        Some(ext) if ext == "aac" => "audio/aac",
+
+        Some(ext) if ext == "mp4" => "video/mp4",
+        Some(ext) if ext == "webm" => "video/webm",
+        Some(ext) if ext == "avi" => "video/x-msvideo",
+        Some(ext) if ext == "mkv" => "video/x-matroska",
+        Some(ext) if ext == "mov" => "video/quicktime",
+
+        Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
+        Some(ext) if ext == "png" => "image/png",
+        Some(ext) if ext == "webp" => "image/webp",
+
+        _ => "application/octet-stream",
+    }
+}

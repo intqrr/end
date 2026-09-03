@@ -1,0 +1,200 @@
+/* Контейнер контролов – прижат к низу .music-main */
+.player-controls {
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    padding: 0.875rem 1.25rem; /* 14px 20px */
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem; /* 12px */
+    width: var(--control-width);
+    max-width: 800px;
+    box-sizing: border-box;
+    margin-top: auto; /* прижимает к низу */
+    margin-bottom: 2.5%;
+    align-self: center;
+}
+
+/* Верхняя строка с кнопками */
+.controls-top-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+.buttons-center-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem; /* 16px */
+    /* компенсация для визуального центрирования кнопки Play */
+    margin-left: 3.75rem; /* 60px */
+}
+
+/* Иконки-кнопки (перемешать, предыдущий, следующий) */
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem; /* 16px */
+    cursor: pointer;
+    padding: 0.25rem;
+    transition: color 0.15s;
+}
+
+.btn-icon:hover {
+    color: var(--text-primary);
+}
+
+.btn-icon.active {
+    color: var(--accent);
+}
+
+/* Кнопка Play / Пауза */
+.btn-play {
+    width: 2.5rem;  /* 40px */
+    height: 2.5rem;
+    border-radius: 50%;
+    background: var(--text-primary);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.btn-play:hover {
+    transform: scale(1.04);
+}
+
+.pause-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem; /* 4px */
+    height: 0.75rem; /* 12px */
+}
+
+.pause-bar {
+    width: 0.1875rem; /* 3px */
+    height: 0.75rem; /* 12px */
+    background-color: #000000;
+    border-radius: 0.0625rem; /* 1px */
+}
+
+.play-symbol {
+    color: #000000;
+    font-size: 0.9375rem; /* 15px */
+    margin-left: 0.1875rem; /* 3px */
+    line-height: 1;
+    display: inline-block;
+}
+
+/* Блок громкости */
+.volume-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem; /* 8px */
+    margin-left: 0.75rem; /* 12px */
+}
+
+.volume-icon {
+    color: var(--text-muted);
+    font-size: 0.8125rem; /* 13px */
+    font-family: sans-serif;
+}
+
+/* Слайдер громкости */
+.volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 4.0625rem; /* 65px */
+    height: 0.25rem; /* 4px */
+    background: var(--bg-hover);
+    border-radius: 0.125rem; /* 2px */
+    outline: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 0.625rem; /* 10px */
+    height: 0.625rem;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 0.625rem;
+    height: 0.625rem;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+/* Контейнер прогресс-бара */
+.progress-container {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem; /* 12px */
+    width: 100%;
+}
+
+.time-text {
+    color: var(--text-dim);
+    font-size: 0.75rem; /* 12px */
+    font-family: monospace;
+    min-width: 2rem; /* 32px */
+}
+
+/* Ползунок прогресса */
+#music-progress-bar {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 0.25rem; /* 4px */
+    border-radius: 0.125rem;
+    background: #38383e;
+    outline: none;
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+}
+
+#music-progress-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 0.75rem; /* 12px */
+    height: 0.75rem;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+}
+
+#music-progress-bar::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+#music-progress-bar::-moz-range-thumb {
+    width: 0.75rem;
+    height: 0.75rem;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+}
+
+#music-progress-bar::-moz-range-thumb:hover {
+    transform: scale(1.2);
+}
+
+#music-progress-bar::-moz-range-track {
+    height: 0.25rem;
+    background: transparent;
+    border-radius: 0.125rem;
+}

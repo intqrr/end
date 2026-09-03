@@ -1,0 +1,20 @@
+[package]
+name = "coach"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dioxus = { version = "0.7.10", features = ["desktop"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+directories = "6.0.0"
+tiny_http = "0.12"
+tokio = { version = "1.53.1", features = ["rt", "fs"] }
+zip = { version = "9.0.0-pre3", default-features = false, features = ["deflate", "lzma"] }
+regex = "1.0"
+ffmpeg-sidecar = "2.5.2"
+
+[features]
+default = ["desktop"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]

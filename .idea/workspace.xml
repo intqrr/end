@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="CargoProjects">
+    <cargoProject FILE="$PROJECT_DIR$/Cargo.toml">
+      <package file="$PROJECT_DIR$">
+        <feature name="default" enabled="true" />
+        <feature name="mobile" enabled="true" />
+      </package>
+    </cargoProject>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="68f3329a-88f5-481c-a444-1423602bc7f9" name="Changes" comment="" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:dev" />
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="CSS File" />
+        <option value="Rust File" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="MacroExpansionManager">
+    <option name="directoryName" value="V0HA6AdF" />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0000000010714754" />
+      <entry key="S2" value="1.0066175951880767" />
+      <entry key="S5" value="1.2158990002276457" />
+      <entry key="S10" value="1.7762950922567464" />
+      <entry key="S30" value="2.8970034048015214" />
+      <entry key="S60" value="3.404417839452344" />
+      <entry key="M2" value="3.8195688579674227" />
+      <entry key="M5" value="4.347283965864361" />
+      <entry key="M10" value="4.96481670685856" />
+      <entry key="M15" value="5.775286444560157" />
+      <entry key="M30" value="9.026183703731878" />
+      <entry key="H1" value="17.790921365139845" />
+      <entry key="H2" value="36.406941353981594" />
+      <entry key="H4" value="79.92404530234342" />
+      <entry key="D1" value="313.46835911665414" />
+      <entry key="W1" value="425.94107329287976" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="3.163713542808901E-200" />
+      <entry key="S2" value="1.3336727830667367E-50" />
+      <entry key="S5" value="1.1220693909336581E-20" />
+      <entry key="S10" value="1.0592780390353987E-10" />
+      <entry key="S30" value="4.76156654211344E-4" />
+      <entry key="S60" value="0.023484697409204388" />
+      <entry key="M2" value="0.18911583218415692" />
+      <entry key="M5" value="0.7705215982700666" />
+      <entry key="M10" value="1.6295917338493353" />
+      <entry key="M15" value="2.4985155503056804" />
+      <entry key="M30" value="4.439178683726753" />
+      <entry key="H1" value="6.385654186125946" />
+      <entry key="H2" value="8.164611089276983" />
+      <entry key="H4" value="10.697368550380846" />
+      <entry key="D1" value="22.897032712400538" />
+      <entry key="W1" value="28.788974918321514" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="0.0015008546692265741" />
+      <entry key="MS500" value="0.27243802900967323" />
+      <entry key="S2" value="0.728895259260016" />
+      <entry key="S5" value="1.0914207702150145" />
+      <entry key="S10" value="1.7086870084025836" />
+      <entry key="S30" value="2.8721800301362967" />
+      <entry key="S60" value="3.4143115548757472" />
+      <entry key="M2" value="4.000247771482642" />
+      <entry key="M5" value="5.112098331804782" />
+      <entry key="M10" value="6.58928450607082" />
+      <entry key="M15" value="8.268537946137222" />
+      <entry key="M30" value="13.460373640871854" />
+      <entry key="H1" value="24.172390649368648" />
+      <entry key="H2" value="44.56811678301259" />
+      <entry key="H4" value="90.61844049377488" />
+      <entry key="D1" value="336.3639635218957" />
+      <entry key="W1" value="454.7297828557527" />
+    </decayedShown>
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 2,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3IgglIT4fNZJwQHeRdIA1dne6nK" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="1" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "CidrDebugProfileConversion": "true",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.rust.reset.selective.auto.import": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "main",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/home/int/documents/projects/rust/coachGUI/assets",
+    "list.type.of.created.stylesheet": "CSS",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.jshint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.jshint": "",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
+    "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
+    "org.rust.disableDetachedFileInspection/home/int/documents/projects/rust/coachGUI/src/data.rs": "true",
+    "org.rust.disableDetachedFileInspection/home/int/documents/projects/rust/coachGUI/src/music_player.rs": "true",
+    "org.rust.disableDetachedFileInspection/home/int/documents/projects/rust/coachGUI/src/tracks.rs": "true",
+    "org.rust.disableDetachedFileInspection/home/int/documents/projects/rust/coachGUI/src/visual.rs": "true",
+    "org.rust.first.attach.projects": "true",
+    "to.speed.mode.migration.done": "true"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/assets" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/assets" />
+      <recent name="$PROJECT_DIR$/src" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Cargo.Run coachGUI">
+    <configuration name="Run coachGUI" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+      <option name="buildProfileId" value="dev" />
+      <option name="command" value="run --package coachGUI --bin coachGUI" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test coachGUI" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+      <option name="command" value="test --workspace" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+  </component>
+  <component name="RustProjectSettings">
+    <option name="toolchainHomeDirectory" value="$USER_HOME$/.cargo/bin" />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="68f3329a-88f5-481c-a444-1423602bc7f9" name="Changes" comment="" />
+      <created>1788191776308</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1788191776308</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
