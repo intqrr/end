@@ -9,7 +9,11 @@ use data::{
     build_track, choose_track_visual, get_songs_dir, import_file_to_songs_dir,
     load_saved_tracks, save_tracks_to_disk, sync_tracks,
 };
-use super::audio_server::unregister_track;
+use super::audio_server::{
+    audio_delay_ms,
+    unregister_track,
+    video_offset_ms,
+};
 
 const MUSIC_BASE_CSS: &str = include_str!("../../assets/music_base.css");
 const MUSIC_VISUAL_CSS: &str = include_str!("../../assets/music_visual.css");
@@ -67,7 +71,7 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
     });
     let mut is_playing = use_signal(|| false);
     let mut shuffle_history = use_signal(Vec::<usize>::new);
-    let mut active_visual = use_signal(|| Option::<(String, bool)>::None);
+    let mut active_visual = use_signal(|| Option::<(String, bool, i64)>::None);
     let mut visual_selection_id = use_signal(|| 0u64);
     let mut is_syncing = use_signal(|| false);
 
@@ -130,9 +134,19 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
 
     let active_track = current_track_index().and_then(|i| tracks.read().get(i).cloned());
     let active_track_for_effect = active_track.clone();
+    let active_video_offset_ms = active_track
+        .as_ref()
+        .map(|t| crate::audio_server::video_offset_ms(t.id))
+        .unwrap_or(0);
 
     use_effect(move || {
         let playing = is_playing();
+
+        let current_track_id = active_track_for_effect
+            .as_ref()
+            .map(|t| t.id)
+            .unwrap_or(usize::MAX);
+
         let current_src = active_track_for_effect
             .as_ref()
             .map(|t| crate::audio_server::audio_url(t.id))
@@ -144,74 +158,258 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
             .map(|v| v.as_ref().clone())
             .unwrap_or_default();
 
+        let offset_ms = active_video_offset_ms;
+
         let js = format!(r##"
-    const a = document.getElementById('audio-player');
-    const v = document.getElementById('track-visual-video');
-    if (!a) return;
-    function playTogether() {{
-        if (v) {{
-            const videoReady = v.readyState >= 2;
-            const audioReady = a.readyState >= 2;
-            if (videoReady && audioReady) {{
-                a.play().catch(() => {{}});
-                v.play().catch(() => {{}});
-                return true;
-            }}
-        }} else {{
-            a.play().catch(() => {{}});
-            return true;
+        const a = document.getElementById('audio-player');
+        const v = document.getElementById('track-visual-video');
+
+        if (!a) return;
+
+        window.__music_player_token =
+            (window.__music_player_token || 0) + 1;
+
+        const token = window.__music_player_token;
+
+        if (window.__music_video_start_timer) {{
+            clearTimeout(window.__music_video_start_timer);
+            window.__music_video_start_timer = null;
         }}
-        return false;
-    }}
-    if (a.dataset.src !== "{current_src}") {{
-        a.dataset.src = "{current_src}";
-        a.src = "{current_src}";
-        a.load();
-        if (v && "{current_src_video}" !== "") {{
-            v.dataset.src = "{current_src_video}";
-            v.src = "{current_src_video}";
-            v.load();
-            v.onloadedmetadata = function() {{
-                if ({playing}) {{
-                    let attempts = 0;
-                    const checkAndPlay = setInterval(() => {{
-                        if (playTogether()) {{
-                            clearInterval(checkAndPlay);
-                        }} else if (++attempts > 20) {{
-                            a.play().catch(() => {{}});
-                            if (v) v.play().catch(() => {{}});
-                            clearInterval(checkAndPlay);
+
+        if (window.__music_video_wait_timer) {{
+            clearInterval(window.__music_video_wait_timer);
+            window.__music_video_wait_timer = null;
+        }}
+
+        if (window.__music_audio_start_timer) {{
+            clearTimeout(window.__music_audio_start_timer);
+            window.__music_audio_start_timer = null;
+        }}
+
+        const newTrackId = {current_track_id};
+        const newAudioSrc = "{current_src}";
+        const newVideoSrc = "{current_src_video}";
+        const offsetMs = {offset_ms};
+
+        const videoDelayMs = Math.max(offsetMs, 0);
+        const audioDelayMs = Math.max(-offsetMs, 0);
+
+        const previousTrackId =
+            Number(a.dataset.trackId ?? "-1");
+
+        const trackChanged =
+            previousTrackId !== newTrackId;
+
+        a.dataset.trackId = String(newTrackId);
+
+        function isCurrentRun() {{
+            return window.__music_player_token === token;
+        }}
+
+        function stopVideo() {{
+            if (!v) return;
+
+            v.pause();
+
+            try {{
+                v.currentTime = 0;
+            }} catch (_) {{}}
+        }}
+
+        function startAudio() {{
+            if (!isCurrentRun() || !{playing}) {{
+                return;
+            }}
+
+            a.play().catch(() => {{}});
+        }}
+
+        function startVideo() {{
+            if (!v || newVideoSrc === "") {{
+                return;
+            }}
+
+            if (!isCurrentRun() || !{playing}) {{
+                return;
+            }}
+
+            if (v.readyState < 2) {{
+                window.__music_video_wait_timer =
+                    setInterval(() => {{
+                        if (!isCurrentRun() || !{playing}) {{
+                            clearInterval(
+                                window.__music_video_wait_timer
+                            );
+
+                            window.__music_video_wait_timer = null;
+                            return;
                         }}
-                    }}, 100);
+
+                        if (v.readyState >= 2) {{
+                            clearInterval(
+                                window.__music_video_wait_timer
+                            );
+
+                            window.__music_video_wait_timer = null;
+
+                            try {{
+                                v.currentTime = 0;
+                            }} catch (_) {{}}
+
+                            v.play().catch(() => {{}});
+                        }}
+                    }}, 25);
+
+                return;
+            }}
+
+            try {{
+                v.currentTime = 0;
+            }} catch (_) {{}}
+
+            v.play().catch(() => {{}});
+        }}
+
+        /*
+         * Только реальная смена трека сбрасывает audio.
+         *
+         * Пауза/продолжение сюда НЕ попадают.
+         */
+        if (trackChanged) {{
+            a.pause();
+
+            try {{
+                a.currentTime = 0;
+            }} catch (_) {{}}
+
+            a.dataset.src = newAudioSrc;
+            a.dataset.ready = "0";
+
+            const p = document.getElementById(
+                'music-progress-bar'
+            );
+            const cur = document.getElementById(
+                'music-current-time'
+            );
+            const dur = document.getElementById(
+                'music-duration-time'
+            );
+
+            if (p) {{
+                p.value = 0;
+                p.style.background =
+                    'linear-gradient(to right, #22c55e 0%, #38383e 0%)';
+            }}
+
+            if (cur) {{
+                cur.innerText = '0:00';
+            }}
+
+            if (dur) {{
+                dur.innerText = '0:00';
+            }}
+
+            /*
+             * Ставим обработчик ДО load().
+             */
+            a.onloadedmetadata = () => {{
+                if (!isCurrentRun()) {{
+                    return;
+                }}
+
+                a.dataset.ready = "1";
+
+                const duration =
+                    a.duration;
+
+                if (dur && duration && !isNaN(duration)) {{
+                    dur.innerText =
+                        fmtTime(duration);
+                }}
+
+                if ({playing}) {{
+                    if (audioDelayMs === 0) {{
+                        startAudio();
+                    }} else {{
+                        window.__music_audio_start_timer =
+                            setTimeout(() => {{
+                                window.__music_audio_start_timer = null;
+                                startAudio();
+                            }}, audioDelayMs);
+                    }}
                 }}
             }};
+
+            a.src = newAudioSrc;
+            a.load();
         }} else {{
+            /*
+             * Трек НЕ менялся.
+             *
+             * Значит это обычная пауза/продолжение.
+             * Никакого currentTime = 0.
+             */
             if ({playing}) {{
-                a.play().catch(() => {{}});
-            }}
-        }}
-    }} else {{
-        if ({playing}) {{
-            if (v && "{current_src_video}" !== "") {{
-                if (v.readyState >= 2 && a.readyState >= 2) {{
-                    a.play().catch(() => {{}});
+                /*
+                 * Видео и аудио уже загружены.
+                 * Возобновляем их с текущего места.
+                 */
+                if (v && newVideoSrc !== "") {{
                     v.play().catch(() => {{}});
-                }} else {{
-                    // Если не готовы, ждём
-                    const checkAndPlay = setInterval(() => {{
-                        if (playTogether()) {{
-                            clearInterval(checkAndPlay);
-                        }}
-                    }}, 100);
                 }}
-            }} else {{
+
                 a.play().catch(() => {{}});
+            }} else {{
+                a.pause();
+
+                if (v) {{
+                    v.pause();
+                }}
             }}
-        }} else {{
-            a.pause();
-            if (v) v.pause();
         }}
-    }}
+
+        /*
+         * Видео при смене источника.
+         */
+        if (trackChanged && v && newVideoSrc !== "") {{
+            const videoChanged =
+                v.dataset.src !== newVideoSrc;
+
+            if (videoChanged) {{
+                v.dataset.src = newVideoSrc;
+                v.src = newVideoSrc;
+                v.load();
+            }}
+
+            stopVideo();
+
+            if ({playing}) {{
+                if (videoDelayMs === 0) {{
+                    startVideo();
+                }} else {{
+                    window.__music_video_start_timer =
+                        setTimeout(() => {{
+                            window.__music_video_start_timer = null;
+                            startVideo();
+                        }}, videoDelayMs);
+                }}
+            }}
+        }} else if (trackChanged && (!v || newVideoSrc === "")) {{
+            if ({playing}) {{
+                /*
+                 * Трека без видео всё равно надо запустить.
+                 * Его запуск уже выполняется через loadedmetadata.
+                 */
+            }}
+        }}
+
+        if (!{playing}) {{
+            a.pause();
+
+            if (v) {{
+                v.pause();
+            }}
+        }}
     "##);
 
         let _ = document::eval(&js);
@@ -226,33 +424,79 @@ pub fn MusicWindow(is_open: Signal<bool>) -> Element {
 audio {
     id: "audio-player",
     style: "display: none;",
-    ontimeupdate: move |_| {
-        let js = format!(r##"
-    const a = document.getElementById('audio-player');
-    const v = document.getElementById('track-visual-video');
-    const p = document.getElementById('music-progress-bar');
-    const cur = document.getElementById('music-current-time');
-    const dur = document.getElementById('music-duration-time');
+ontimeupdate: move |_| {
+    let js = format!(r##"
+        const a = document.getElementById('audio-player');
+        const v = document.getElementById('track-visual-video');
+        const p = document.getElementById('music-progress-bar');
+        const cur = document.getElementById('music-current-time');
+        const dur = document.getElementById('music-duration-time');
 
-    if (a && a.duration) {{
-        const pct = (a.currentTime / a.duration) * 100;
+        if (!a || !a.duration || isNaN(a.duration)) {{
+            return;
+        }}
+
+        const offsetSec = {active_video_offset_ms} / 1000;
+
+        const displayTime = Math.max(
+            0,
+            Math.min(
+                a.duration,
+                a.currentTime + Math.min(offsetSec, 0)
+            )
+        );
+
+        const pct =
+            (displayTime / a.duration) * 100;
+
         if (p) {{
             p.value = pct;
-            p.style.background = `linear-gradient(to right, #22c55e ${{pct}}%, #38383e ${{pct}}%)`;
+            p.style.background =
+                `linear-gradient(
+                    to right,
+                    #22c55e ${{pct}}%,
+                    #38383e ${{pct}}%
+                )`;
         }}
-        if (cur) cur.innerText = fmtTime(a.currentTime);
-        if (dur) dur.innerText = fmtTime(a.duration);
 
-        // Синхронизация видео (если расхождение больше 0.5 сек – мягко подгоняем)
-        if (v && a.duration > 0) {{
-            const drift = Math.abs(v.currentTime - a.currentTime);
-            if (drift > 0.5) {{
-                // Если расхождение большое, просто перемещаем видео на позицию аудио
-                v.currentTime = a.currentTime;
+        if (cur) {{
+            cur.innerText = fmtTime(displayTime);
+        }}
+
+        if (dur) {{
+            dur.innerText = fmtTime(a.duration);
+        }}
+
+        if (v) {{
+            const expectedVideoTime =
+                a.currentTime - offsetSec;
+
+            if (expectedVideoTime <= 0) {{
+                if (!v.paused) {{
+                    v.pause();
+                }}
+
+                if (v.currentTime > 0.02) {{
+                    try {{
+                        v.currentTime = 0;
+                    }} catch (_) {{}}
+                }}
+            }} else {{
+                const drift =
+                    Math.abs(
+                        v.currentTime - expectedVideoTime
+                    );
+
+                if (drift > 0.20) {{
+                    try {{
+                        v.currentTime =
+                            expectedVideoTime;
+                    }} catch (_) {{}}
+                }}
             }}
         }}
-    }}
     "##);
+
     let _ = document::eval(&js);
 },
         onended: move |_| {
@@ -428,12 +672,13 @@ div { class: "current-track-title",
     }
 }
 
-                PlayerControls {
-                    track: active_track,
-                    is_playing,
-                    is_shuffle,
-                    on_next: move |forward| play_next(forward),
-                }
+PlayerControls {
+    track: active_track,
+    is_playing,
+    is_shuffle,
+    video_offset_ms: active_video_offset_ms,
+    on_next: move |forward| play_next(forward),
+}
             }
         }
 
@@ -480,6 +725,8 @@ spawn(async move {
                 }
                 if let Some(file_name) = p.file_name().and_then(|s| s.to_str()) {
                     let file_name_lower = file_name.to_ascii_lowercase();
+                                        let is_video_offset =
+                                        file_name_lower.ends_with(".videooffset");
                     let is_audio = file_name_lower.ends_with(".mp3") || file_name_lower.ends_with(".ogg") ||
                                    file_name_lower.ends_with(".wav") || file_name_lower.ends_with(".flac") ||
                                    file_name_lower.ends_with(".m4a") || file_name_lower.ends_with(".aac");
@@ -489,27 +736,42 @@ spawn(async move {
                                    file_name_lower.ends_with(".avi") || file_name_lower.ends_with(".flv");
                     let is_normalized = file_name_lower.ends_with(".normalized");
 
-                    if is_normalized {
-                        if file_name_lower.starts_with(&stem_lower) {
-                            let base = file_name_lower.trim_end_matches(".normalized");
-                            if base == stem_lower
-                                || base.starts_with(&format!("{}_", stem_lower))
-                                || base.starts_with(&format!("{}.", stem_lower))
-                            {
-                                let _ = std::fs::remove_file(&p);
-                            }
-                        }
-                    } else if is_audio || is_image || is_video {
-                        if file_name_lower.starts_with(&stem_lower) {
-                            let rest = &file_name_lower[stem_lower.len()..];
-                            if rest.is_empty()
-                                || rest.starts_with('.')
-                                || (rest.starts_with('_') && rest[1..].chars().all(|c| c.is_ascii_digit()))
-                            {
-                                let _ = std::fs::remove_file(&p);
-                            }
-                        }
-                    }
+if is_normalized || is_video_offset {
+    let base = if is_normalized {
+        file_name_lower
+            .strip_suffix(".normalized")
+            .unwrap_or("")
+    } else {
+        file_name_lower
+            .strip_suffix(".videooffset")
+            .unwrap_or("")
+    };
+
+    if base == stem_lower
+        || base.starts_with(&format!("{}.", stem_lower))
+        || base.starts_with(&format!("{}_", stem_lower))
+    {
+        let _ = std::fs::remove_file(&p);
+    }
+} else if is_audio || is_image || is_video {
+    if file_name_lower.starts_with(&stem_lower) {
+        let rest =
+            &file_name_lower[stem_lower.len()..];
+
+        if rest.is_empty()
+            || rest.starts_with('.')
+            || (
+                rest.starts_with('_')
+                && rest[1..]
+                    .chars()
+                    .all(|c| c.is_ascii_digit())
+            )
+        {
+            let _ =
+                std::fs::remove_file(&p);
+        }
+    }
+}
                 }
             }
         }

@@ -1,8 +1,7 @@
 use dioxus::prelude::*;
-use dioxus::desktop::{Config, WindowBuilder};
+use dioxus::desktop::{Config, WindowBuilder, LogicalSize};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
-
 mod music;
 use music::*;
 
@@ -20,10 +19,8 @@ fn main() {
     }
     if let Some(dirs) = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp") {
         eprintln!("Config dir: {:?}", dirs.config_dir());
-        eprintln!("Data dir: {:?}", dirs.data_dir());
-    } else {
-        eprintln!("ProjectDirs не получены");
-    }
+        eprintln!("Data dir: {:?}", dirs.data_dir());}
+
     std::env::set_var("GTK_THEME", "Adwaita:dark");
 
     let audio_port = spawn_audio_server();
@@ -35,6 +32,8 @@ fn main() {
             WindowBuilder::new()
                 .with_title("")
                 .with_decorations(true)
+                .with_inner_size(LogicalSize::new(1200.0, 800.0))
+                .with_min_inner_size(LogicalSize::new(1100.0, 700.0))
         );
 
     LaunchBuilder::desktop().with_cfg(config).launch(App);

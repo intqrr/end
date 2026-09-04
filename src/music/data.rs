@@ -5,6 +5,20 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+use ffmpeg_sidecar::{
+    command::FfmpegCommand,
+    download::auto_download,
+    paths::ffmpeg_path,
+};
+use regex::Regex;
+
+use super::audio_server::{
+    audio_url,
+    cover_url,
+    register_track,
+    video_offset_ms,
+    video_url,
+};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
@@ -24,7 +38,9 @@ impl Default for Settings {
 pub fn get_settings_path() -> Option<PathBuf> {
     let dirs = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp")?;
     let config_dir = dirs.config_dir();
+
     std::fs::create_dir_all(config_dir).ok()?;
+
     Some(config_dir.join("settings.json"))
 }
 
@@ -32,9 +48,11 @@ pub fn load_settings() -> Settings {
     let Some(path) = get_settings_path() else {
         return Settings::default();
     };
+
     let Ok(data) = std::fs::read_to_string(path) else {
         return Settings::default();
     };
+
     serde_json::from_str(&data).unwrap_or_default()
 }
 
@@ -42,19 +60,11 @@ pub fn save_settings(settings: &Settings) {
     let Some(path) = get_settings_path() else {
         return;
     };
+
     if let Ok(json) = serde_json::to_string(settings) {
         let _ = std::fs::write(path, json);
     }
 }
-
-use ffmpeg_sidecar::{
-    command::FfmpegCommand,
-    download::auto_download,
-    paths::ffmpeg_path,
-};
-use regex::Regex;
-
-use super::audio_server::{audio_url, cover_url, register_track, video_url};
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Track {
@@ -73,7 +83,6 @@ pub struct SavedTrack {
 }
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "ogg", "wav", "flac", "m4a", "aac"];
-const TRACK_AUDIO_EXTENSIONS: &[&str] = &["mp3", "wav", "ogg", "flac"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 const VIDEO_EXTENSIONS: &[&str] = &["avi", "mp4", "webm", "flv"];
 
@@ -83,7 +92,10 @@ pub fn extract_song_title(name: &str) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or(name);
 
-    let digits = stem.find(|ch: char| !ch.is_ascii_digit()).unwrap_or(stem.len());
+    let digits = stem
+        .find(|ch: char| !ch.is_ascii_digit())
+        .unwrap_or(stem.len());
+
     if digits == 0 || digits == stem.len() {
         return stem.to_owned();
     }
@@ -94,12 +106,16 @@ pub fn extract_song_title(name: &str) -> String {
 pub fn get_songs_dir() -> Option<PathBuf> {
     let dirs = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp")?;
     let path = dirs.data_dir().join("songs");
+
     fs::create_dir_all(&path).ok()?;
+
     Some(path)
 }
 
 fn extension(path: &Path) -> &str {
-    path.extension().and_then(|ext| ext.to_str()).unwrap_or("")
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
 }
 
 fn has_extension(path: &Path, extensions: &[&str]) -> bool {
@@ -110,13 +126,21 @@ fn has_extension(path: &Path, extensions: &[&str]) -> bool {
 
 fn is_hitsound_name(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
-    // Точные osu!-хитсаунды и их варианты с приставками (soft-hitnormal, drum-hitclap и т.д.),
-    // а не любое слово, где встречается подстрока "hit" (иначе ловятся реальные треки
-    // вроде "Hitorigoto").
+
     const HITSOUND_NAMES: &[&str] = &[
-        "hitnormal", "hitwhistle", "hitfinish", "hitclap", "hitmiss",
-        "slidertick", "sliderslide", "sliderwhistle",
-        "combobreak", "applause", "failsound", "spinnerbonus", "spinnerspin",
+        "hitnormal",
+        "hitwhistle",
+        "hitfinish",
+        "hitclap",
+        "hitmiss",
+        "slidertick",
+        "sliderslide",
+        "sliderwhistle",
+        "combobreak",
+        "applause",
+        "failsound",
+        "spinnerbonus",
+        "spinnerspin",
     ];
 
     HITSOUND_NAMES.iter().any(|part| name.contains(part))
@@ -128,6 +152,7 @@ fn is_hitsound_name(name: &str) -> bool {
 
 fn marker_path(path: &Path) -> PathBuf {
     let mut marker = path.to_path_buf();
+
     match extension(path) {
         "" => {
             marker.set_extension("normalized");
@@ -136,6 +161,7 @@ fn marker_path(path: &Path) -> PathBuf {
             marker.set_extension(format!("{ext}.normalized"));
         }
     }
+
     marker
 }
 
@@ -147,81 +173,109 @@ fn is_already_normalized(path: &Path) -> bool {
     marker_path(path).exists()
 }
 
-fn run_ffmpeg<I, S>(args: I) -> std::io::Result<std::process::Output>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<std::ffi::OsStr>,
-{
-    Command::new(ffmpeg_path()).args(args).output()
+fn video_offset_sidecar_path(path: &Path) -> PathBuf {
+    let mut sidecar = path.to_path_buf();
+
+    match extension(path) {
+        "" => {
+            sidecar.set_extension("videooffset");
+        }
+        ext => {
+            sidecar.set_extension(format!("{ext}.videooffset"));
+        }
+    }
+
+    sidecar
 }
 
-fn trim_silence(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let abs_path = path.canonicalize().map_err(|e| format!("canonicalize failed: {}", e))?;
-    eprintln!("[trim_silence] Обработка файла: {}", abs_path.display());
-
-    if !abs_path.exists() {
-        return Err(format!("file does not exist: {:?}", abs_path).into());
+fn write_video_offset(path: &Path, offset_ms: i64) {
+    if let Err(e) = fs::write(
+        video_offset_sidecar_path(path),
+        offset_ms.to_string(),
+    ) {
+        eprintln!(
+            "[process] Не удалось записать videooffset для {:?}: {}",
+            path,
+            e
+        );
     }
+}
 
-    if is_already_normalized(&abs_path) {
-        return Ok(());
+pub fn read_video_offset(path: &Path) -> i64 {
+    fs::read_to_string(video_offset_sidecar_path(path))
+        .ok()
+        .and_then(|s| s.trim().parse::<i64>().ok())
+        .unwrap_or(0)
+}
+
+fn audio_codec_args_for_ext(ext: &str) -> Vec<String> {
+    match ext {
+        "mp3" => vec![
+            "-c:a".to_string(),
+            "libmp3lame".to_string(),
+            "-q:a".to_string(),
+            "2".to_string(),
+        ],
+
+        "flac" => vec![
+            "-c:a".to_string(),
+            "flac".to_string(),
+        ],
+
+        "ogg" | "oga" => vec![
+            "-c:a".to_string(),
+            "libvorbis".to_string(),
+            "-q:a".to_string(),
+            "6".to_string(),
+        ],
+
+        "wav" => vec![
+            "-c:a".to_string(),
+            "pcm_s16le".to_string(),
+        ],
+
+        _ => vec![
+            "-c:a".to_string(),
+            "libmp3lame".to_string(),
+            "-q:a".to_string(),
+            "2".to_string(),
+        ],
     }
-
-    let ext = extension(&abs_path);
-    let temp = abs_path.with_extension(format!("trimmed.tmp.{ext}"));
-    let _ = fs::remove_file(&temp);
-
-    let ffmpeg = ffmpeg_path();
-    eprintln!("[trim_silence] ffmpeg path: {:?}", ffmpeg);
-
-    let output = Command::new(&ffmpeg)
-        .arg("-y")
-        .arg("-i")
-        .arg(abs_path.as_os_str())
-        .arg("-af")
-        .arg("silenceremove=1:0:-30dB,adelay=400|400")
-        .arg("-vn")
-        .arg("-c:a")
-        .arg("libmp3lame")
-        .arg("-q:a")
-        .arg("2")
-        .arg(temp.as_os_str())
-        .output()?;
-
-    eprintln!("[trim_silence] ffmpeg stdout: {}", String::from_utf8_lossy(&output.stdout));
-    eprintln!("[trim_silence] ffmpeg stderr: {}", String::from_utf8_lossy(&output.stderr));
-
-    if !output.status.success() {
-        let _ = fs::remove_file(&temp);
-        return Err(format!("ffmpeg silenceremove failed for {:?}", abs_path).into());
-    }
-
-    if !temp.exists() {
-        return Err(format!("ffmpeg did not create output file: {:?}", temp).into());
-    }
-
-    fs::rename(temp, &abs_path)?;
-    mark_as_normalized(&abs_path)?;
-    Ok(())
 }
 
 fn normalize_audio_volume(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let abs_path = path.canonicalize().map_err(|e| format!("canonicalize failed: {}", e))?;
-    eprintln!("[normalize] Обработка файла: {}", abs_path.display());
+    let abs_path = path
+        .canonicalize()
+        .map_err(|e| format!("canonicalize failed: {}", e))?;
+
+    eprintln!(
+        "[normalize] Обработка файла: {}",
+        abs_path.display()
+    );
 
     if !abs_path.exists() {
-        return Err(format!("file does not exist: {:?}", abs_path).into());
+        return Err(format!(
+            "file does not exist: {:?}",
+            abs_path
+        )
+            .into());
     }
 
     if is_already_normalized(&abs_path) {
+        eprintln!(
+            "[normalize] Уже нормализован: {}",
+            abs_path.display()
+        );
         return Ok(());
     }
 
     let ext = extension(&abs_path).to_ascii_lowercase();
+
     let temp_path = abs_path.with_extension(format!("norm.tmp.{ext}"));
     let _ = fs::remove_file(&temp_path);
 
     let ffmpeg = ffmpeg_path();
+
     eprintln!("[normalize] ffmpeg path: {:?}", ffmpeg);
 
     let path_str = abs_path.to_string_lossy().to_string();
@@ -232,48 +286,36 @@ fn normalize_audio_volume(path: &Path) -> Result<(), Box<dyn std::error::Error>>
         "-hide_banner".to_string(),
         "-loglevel".to_string(),
         "error".to_string(),
+
         "-i".to_string(),
         path_str,
+
         "-af".to_string(),
         "loudnorm=I=-10:TP=-1.5:LRA=11".to_string(),
+
         "-vn".to_string(),
     ];
 
-    let ext_str = ext.as_str();
-    let codec_args: Vec<String> = match ext_str {
-        "mp3" => vec![
-            "-c:a".to_string(),
-            "libmp3lame".to_string(),
-            "-q:a".to_string(),
-            "2".to_string(),
-        ],
-        "flac" => vec!["-c:a".to_string(), "flac".to_string()],
-        "ogg" | "oga" => vec![
-            "-c:a".to_string(),
-            "libvorbis".to_string(),
-            "-q:a".to_string(),
-            "6".to_string(),
-        ],
-        "wav" => vec!["-c:a".to_string(), "pcm_s16le".to_string()],
-        _ => vec![
-            "-c:a".to_string(),
-            "libmp3lame".to_string(),
-            "-q:a".to_string(),
-            "2".to_string(),
-        ],
-    };
-    args.extend(codec_args);
+    args.extend(audio_codec_args_for_ext(&ext));
     args.push(temp_str);
 
     let output = Command::new(&ffmpeg)
         .args(&args)
         .output()?;
 
-    eprintln!("[normalize] ffmpeg stdout: {}", String::from_utf8_lossy(&output.stdout));
-    eprintln!("[normalize] ffmpeg stderr: {}", String::from_utf8_lossy(&output.stderr));
+    eprintln!(
+        "[normalize] ffmpeg stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    eprintln!(
+        "[normalize] ffmpeg stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     if !output.status.success() {
         let _ = fs::remove_file(&temp_path);
+
         return Err(format!(
             "ffmpeg normalization failed for {:?}: {}",
             abs_path,
@@ -281,12 +323,18 @@ fn normalize_audio_volume(path: &Path) -> Result<(), Box<dyn std::error::Error>>
         )
             .into());
     }
+
     if !temp_path.exists() {
-        return Err(format!("ffmpeg did not create output file: {:?}", temp_path).into());
+        return Err(format!(
+            "ffmpeg did not create output file: {:?}",
+            temp_path
+        )
+            .into());
     }
 
     fs::rename(temp_path, &abs_path)?;
     mark_as_normalized(&abs_path)?;
+
     Ok(())
 }
 
@@ -297,6 +345,7 @@ fn read_osu_metadata(path: &Path) -> (Option<String>, Option<String>) {
 
     let mut artist = None;
     let mut title = None;
+
     for line in content.lines() {
         if let Some(value) = line.strip_prefix("Artist:") {
             artist = Some(value.trim().to_owned());
@@ -304,31 +353,64 @@ fn read_osu_metadata(path: &Path) -> (Option<String>, Option<String>) {
             title = Some(value.trim().to_owned());
         }
     }
+
     (artist, title)
 }
 
 fn extract_background_from_osu(path: &Path) -> Option<String> {
     let content = fs::read_to_string(path).ok()?;
     let regex = Regex::new(r#"^\s*0,0,"([^"]+)""#).ok()?;
+
     content
         .lines()
         .find_map(|line| regex.captures(line).map(|caps| caps[1].to_owned()))
 }
 
+fn extract_video_offset_from_osu(path: &Path) -> Option<i64> {
+    let content = fs::read_to_string(path).ok()?;
+
+    let mut in_events = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.eq_ignore_ascii_case("[Events]") {
+            in_events = true;
+            continue;
+        }
+
+        if in_events && trimmed.starts_with('[') {
+            break;
+        }
+
+        if !in_events {
+            continue;
+        }
+
+        if let Some(rest) = trimmed.strip_prefix("Video,") {
+            if let Some(offset_str) = rest.split(',').next() {
+                if let Ok(offset) = offset_str.trim().parse::<i64>() {
+                    return Some(offset);
+                }
+            }
+        }
+    }
+
+    None
+}
+
 fn clean_folder_name(name: &str) -> String {
     let mut parts = name.split_whitespace();
+
     match parts.next() {
-        Some(first) if first.chars().all(|ch| ch.is_ascii_digit()) => parts.collect::<Vec<_>>().join(" "),
+        Some(first) if first.chars().all(|ch| ch.is_ascii_digit()) => {
+            parts.collect::<Vec<_>>().join(" ")
+        }
+
         _ => name.to_owned(),
     }
 }
 
-// Метаданные из .osu (Artist/Title) — обычный текст и могут содержать символы,
-// недопустимые или опасные в именах файлов Windows. В частности ':' на NTFS —
-// это разделитель Alternate Data Stream: "Foo (CV: Bar).mp3" молча создаёт
-// нулевой файл "Foo (CV" с реальным аудио, спрятанным в скрытом потоке,
-// невидимом для обычного чтения директории. Поэтому чистим title перед тем,
-// как строить из него путь к файлу.
 fn sanitize_filename(name: &str) -> String {
     let mut result: String = name
         .chars()
@@ -339,60 +421,165 @@ fn sanitize_filename(name: &str) -> String {
         })
         .collect();
 
-    while matches!(result.chars().last(), Some('.') | Some(' ')) {
+    while matches!(
+        result.chars().last(),
+        Some('.') | Some(' ')
+    ) {
         result.pop();
     }
 
     if result.is_empty() {
         result = "track".to_owned();
     }
+
     result
 }
 
-fn choose_images(mut images: Vec<PathBuf>, background: Option<&str>) -> Vec<PathBuf> {
-    let mut jpgs: Vec<_> = images
+fn choose_images(
+    mut images: Vec<PathBuf>,
+    background: Option<&str>,
+    has_video: bool,
+) -> Vec<PathBuf> {
+    if has_video {
+        if let Some(background) = background {
+            if let Some(path) = images.iter().find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| {
+                        name.eq_ignore_ascii_case(background)
+                    })
+            }) {
+                return vec![path.clone()];
+            }
+        }
+
+        let mut jpgs: Vec<PathBuf> = images
+            .iter()
+            .filter(|path| {
+                has_extension(path, &["jpg", "jpeg"])
+            })
+            .cloned()
+            .collect();
+
+        jpgs.sort_by_key(|path| {
+            path.file_name()
+                .map(|name| name.to_owned())
+        });
+
+        if let Some(first) = jpgs.into_iter().next() {
+            return vec![first];
+        }
+
+        images.sort_by_key(|path| {
+            path.file_name()
+                .map(|name| name.to_owned())
+        });
+
+        if let Some(first) = images
+            .into_iter()
+            .find(|path| has_extension(path, &["png", "webp"]))
+        {
+            return vec![first];
+        }
+
+        return Vec::new();
+    }
+
+    let mut jpgs: Vec<PathBuf> = images
         .iter()
-        .filter(|path| has_extension(path, &["jpg", "jpeg"]))
+        .filter(|path| {
+            has_extension(path, &["jpg", "jpeg"])
+        })
         .cloned()
         .collect();
-    jpgs.sort_by_key(|path| path.file_name().map(|name| name.to_owned()));
+
+    jpgs.sort_by_key(|path| {
+        path.file_name()
+            .map(|name| name.to_owned())
+    });
 
     if !jpgs.is_empty() {
         if let Some(background) = background {
             if let Some(pos) = jpgs.iter().position(|path| {
                 path.file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.eq_ignore_ascii_case(background))
+                    .is_some_and(|name| {
+                        name.eq_ignore_ascii_case(background)
+                    })
             }) {
                 jpgs.swap(0, pos);
             }
         }
+
         return jpgs;
     }
 
-    let background = background.and_then(|name| {
+    let selected = background.and_then(|name| {
         images.iter().find(|path| {
             path.file_name()
                 .and_then(|file| file.to_str())
-                .is_some_and(|file| file.eq_ignore_ascii_case(name))
+                .is_some_and(|file| {
+                    file.eq_ignore_ascii_case(name)
+                })
                 && has_extension(path, &["png", "webp"])
         })
     });
 
-    background
+    selected
         .cloned()
-        .or_else(|| images.drain(..).find(|path| has_extension(path, &["png", "webp"])))
+        .or_else(|| {
+            images
+                .into_iter()
+                .find(|path| has_extension(path, &["png", "webp"]))
+        })
         .into_iter()
         .collect()
 }
 
 fn move_file(source: &Path, destination: &Path) {
-    let _ = fs::rename(source, destination)
-        .or_else(|_| fs::copy(source, destination).map(|_| ()));
+    if let Err(rename_error) = fs::rename(source, destination) {
+        if let Err(copy_error) =
+            fs::copy(source, destination)
+        {
+            eprintln!(
+                "[process] Не удалось переместить {:?} -> {:?}: rename={}, copy={}",
+                source,
+                destination,
+                rename_error,
+                copy_error
+            );
+            return;
+        }
+
+        let _ = fs::remove_file(source);
+    }
 }
 
-fn process_and_flatten_folder(folder: &Path, songs_dir: &Path) -> Option<PathBuf> {
-    eprintln!("[process] ВХОД В ФУНКЦИЮ для папки: {:?}", folder);
+fn extract_video_offset_from_osu_for_folder(
+    folder: &Path,
+) -> Option<i64> {
+    fs::read_dir(folder)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            extension(path)
+                .eq_ignore_ascii_case("osu")
+        })
+        .and_then(|path| {
+            extract_video_offset_from_osu(&path)
+        })
+}
+
+fn process_and_flatten_folder(
+    folder: &Path,
+    songs_dir: &Path,
+) -> Option<PathBuf> {
+    eprintln!(
+        "[process] ВХОД В ФУНКЦИЮ для папки: {:?}",
+        folder
+    );
+
     let mut title = None;
     let mut background = None;
     let mut images = Vec::new();
@@ -401,55 +588,76 @@ fn process_and_flatten_folder(folder: &Path, songs_dir: &Path) -> Option<PathBuf
 
     for entry in fs::read_dir(folder).ok()?.flatten() {
         let path = entry.path();
+
         if !path.is_file() {
             continue;
         }
 
-        match extension(&path).to_ascii_lowercase().as_str() {
+        match extension(&path)
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "osu" => {
                 if title.is_none() {
-                    let (artist, song) = read_osu_metadata(&path);
-                    title = artist.zip(song).map(|(artist, song)| format!("{artist} - {song}"));
+                    let (artist, song) =
+                        read_osu_metadata(&path);
+
+                    title = artist
+                        .zip(song)
+                        .map(|(artist, song)| {
+                            format!("{artist} - {song}")
+                        });
                 }
-                background = background.or_else(|| extract_background_from_osu(&path));
+
+                background =
+                    background.or_else(|| {
+                        extract_background_from_osu(&path)
+                    });
             }
-            ext if AUDIO_EXTENSIONS.contains(&ext) => audio.push(path),
-            ext if IMAGE_EXTENSIONS.contains(&ext) => images.push(path),
-            ext if VIDEO_EXTENSIONS.contains(&ext) && video.is_none() => video = Some(path),
+
+            ext if AUDIO_EXTENSIONS.contains(&ext) => {
+                if !is_hitsound_name(
+                    path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(""),
+                ) {
+                    audio.push(path);
+                }
+            }
+
+            ext if IMAGE_EXTENSIONS.contains(&ext) => {
+                images.push(path);
+            }
+
+            ext if VIDEO_EXTENSIONS.contains(&ext)
+                && video.is_none() =>
+                {
+                    video = Some(path);
+                }
+
             _ => {}
         }
     }
 
     let source_audio = audio
         .iter()
-        .find(|path| extension(path).eq_ignore_ascii_case("mp3"))
+        .find(|path| {
+            extension(path)
+                .eq_ignore_ascii_case("mp3")
+        })
         .or_else(|| {
             audio.iter().find(|path| {
-                extension(path).eq_ignore_ascii_case("ogg")
+                extension(path)
+                    .eq_ignore_ascii_case("ogg")
                     && path
                     .file_stem()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| !is_hitsound_name(name))
+                    .is_some_and(|name| {
+                        !is_hitsound_name(name)
+                    })
             })
         })?
         .clone();
-
-    // ВАЖНО: в папке может быть больше одного настоящего трека (не хитсаунда).
-    // Раньше все остальные аудиофайлы, кроме выбранного source_audio, безвозвратно
-    // терялись при fs::remove_dir_all(folder) ниже. Забираем их отдельными треками
-    // под их собственными именами, чтобы они попали в songs_dir и не пропали.
-    for extra in audio.iter().filter(|path| *path != &source_audio) {
-        let Some(stem) = extra.file_stem().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if is_hitsound_name(stem) {
-            continue; // это реально хитсаунд/сэмпл — его можно оставить на удаление
-        }
-        let name = extra.file_name().and_then(|n| n.to_str()).unwrap_or("track");
-        let target = unique_dest_path(songs_dir, name);
-        eprintln!("[process] Доп. трек в папке, выношу отдельно: {:?} -> {:?}", extra, target);
-        move_file(extra, &target);
-    }
 
     let title = title.unwrap_or_else(|| {
         folder
@@ -458,65 +666,126 @@ fn process_and_flatten_folder(folder: &Path, songs_dir: &Path) -> Option<PathBuf
             .map(clean_folder_name)
             .unwrap_or_else(|| "Track".to_owned())
     });
-    let title = sanitize_filename(&title);
-    let selected_images = choose_images(images, background.as_deref());
-    let audio_ext = extension(&source_audio).to_ascii_lowercase();
 
-    // Уникальное имя для аудио
-    let target_audio = unique_dest_path(songs_dir, &format!("{title}.{audio_ext}"));
+    let title = sanitize_filename(&title);
+
+    let has_video = video.is_some();
+
+    let selected_images = choose_images(
+        images,
+        background.as_deref(),
+        has_video,
+    );
+
+    let audio_ext =
+        extension(&source_audio).to_ascii_lowercase();
+
+    let target_audio = unique_dest_path(
+        songs_dir,
+        &format!("{title}.{audio_ext}"),
+    );
+
     move_file(&source_audio, &target_audio);
 
-    // Уникальные имена для изображений
     for (index, image) in selected_images.iter().enumerate() {
-        let ext = extension(image).to_ascii_lowercase();
-        let base_name = if index == 0 {
+        let ext =
+            extension(image).to_ascii_lowercase();
+
+        let base_name = if has_video {
+            format!("{title}.{ext}")
+        } else if index == 0 {
             format!("{title}.{ext}")
         } else {
             format!("{title}_{index}.{ext}")
         };
-        let target = unique_dest_path(songs_dir, &base_name);
+
+        let target =
+            unique_dest_path(songs_dir, &base_name);
+
         move_file(image, &target);
     }
 
     if let Some(video_path) = video {
-        let ext = extension(&video_path).to_ascii_lowercase();
-        let base_name = format!("{title}.{ext}");
-        let target = unique_dest_path(songs_dir, &base_name);
+        let ext =
+            extension(&video_path).to_ascii_lowercase();
+
+        let base_name =
+            format!("{title}.{ext}");
+
+        let target =
+            unique_dest_path(songs_dir, &base_name);
+
         move_file(&video_path, &target);
-        if ext != "webm" {
-            convert_video_to_webm(&target);
+
+        let final_video_path =
+            if ext != "webm" {
+                convert_video_to_webm(&target)
+                    .unwrap_or_else(|| target.clone())
+            } else {
+                target
+            };
+
+        if let Some(offset) =
+            extract_video_offset_from_osu_for_folder(folder)
+        {
+            write_video_offset(
+                &final_video_path,
+                offset,
+            );
         }
     }
 
     let _ = fs::remove_dir_all(folder);
+
     Some(target_audio)
 }
 
 fn ensure_ffmpeg() {
     if let Err(error) = auto_download() {
-        eprintln!("failed to download ffmpeg: {error}");
+        eprintln!(
+            "failed to download ffmpeg: {error}"
+        );
     }
 }
 
 fn convert_video_to_webm(path: &Path) -> Option<PathBuf> {
     let stem = path.file_stem()?.to_str()?;
     let parent = path.parent()?;
-    let target = parent.join(format!("{stem}.webm"));
+
+    let target =
+        parent.join(format!("{stem}.webm"));
 
     if target.exists() {
         if target != path {
             let _ = fs::remove_file(path);
         }
+
         return Some(target);
     }
 
     ensure_ffmpeg();
+
     let status = FfmpegCommand::new()
         .args(["-y", "-i"])
         .arg(path.to_str()?)
         .args([
-            "-c:v", "libvpx-vp9", "-b:v", "1M", "-crf", "32", "-an", "-deadline", "realtime",
-            "-cpu-used", "8", "-row-mt", "1", "-tile-columns", "4", "-threads", "0",
+            "-c:v",
+            "libvpx-vp9",
+            "-b:v",
+            "1M",
+            "-crf",
+            "32",
+            "-an",
+            "-deadline",
+            "realtime",
+            "-cpu-used",
+            "8",
+            "-row-mt",
+            "1",
+            "-tile-columns",
+            "4",
+            "-threads",
+            "0",
         ])
         .arg(target.to_str()?)
         .spawn()
@@ -534,131 +803,209 @@ fn convert_video_to_webm(path: &Path) -> Option<PathBuf> {
 
 pub fn sync_tracks() -> Vec<Track> {
     let total_start = Instant::now();
-    eprintln!("[sync] НАЧАЛО sync_tracks");
 
-    // auto_download() убран – вызывать один раз при старте
+    eprintln!(
+        "[sync] НАЧАЛО sync_tracks"
+    );
 
     crate::audio_server::update_cache_buster();
-    eprintln!("[sync] cache_buster обновлён");
+
+    eprintln!(
+        "[sync] cache_buster обновлён"
+    );
 
     let mut tracks = Vec::new();
 
     let Some(songs_dir) = get_songs_dir() else {
-        eprintln!("[sync] songs_dir не получен");
+        eprintln!(
+            "[sync] songs_dir не получен"
+        );
+
         return tracks;
     };
-    eprintln!("[sync] songs_dir: {:?}", songs_dir);
 
-    // === 1. Обработка вложенных папок ===
+    eprintln!(
+        "[sync] songs_dir: {:?}",
+        songs_dir
+    );
+
     let start = Instant::now();
-    eprintln!("[sync] Чтение songs_dir для обработки папок...");
+
+    eprintln!(
+        "[sync] Чтение songs_dir для обработки папок..."
+    );
+
     let entries = match fs::read_dir(&songs_dir) {
         Ok(e) => e,
+
         Err(e) => {
-            eprintln!("[sync] Ошибка чтения songs_dir: {}", e);
+            eprintln!(
+                "[sync] Ошибка чтения songs_dir: {}",
+                e
+            );
+
             return tracks;
         }
     };
 
     for entry in entries.flatten() {
         let path = entry.path();
+
         if path.is_dir() {
-            eprintln!("[sync] Обрабатываем папку: {:?}", path);
-            process_and_flatten_folder(&path, &songs_dir);
-        } else {
-            eprintln!("[sync] Пропускаем файл (не папка): {:?}", path);
+            eprintln!(
+                "[sync] Обрабатываем папку: {:?}",
+                path
+            );
+
+            process_and_flatten_folder(
+                &path,
+                &songs_dir,
+            );
         }
     }
-    eprintln!("[sync] Обработка папок заняла: {:?}", start.elapsed());
 
-    // === 2. Сбор аудиофайлов из корня ===
+    eprintln!(
+        "[sync] Обработка папок заняла: {:?}",
+        start.elapsed()
+    );
+
     let start = Instant::now();
-    eprintln!("[sync] Обработка папок завершена. Начинаем сбор аудиофайлов из корня...");
 
-    let entries = match fs::read_dir(&songs_dir) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("[sync] Ошибка повторного чтения songs_dir: {}", e);
-            return tracks;
-        }
-    };
+    eprintln!(
+        "[sync] Начинаем сбор аудиофайлов из корня..."
+    );
 
-    let files: Vec<_> = entries.filter_map(Result::ok).collect();
-    eprintln!("[sync] Всего элементов в songs_dir после обработки: {}", files.len());
+    let entries =
+        match fs::read_dir(&songs_dir) {
+            Ok(e) => e,
 
-    let mut audio_files: Vec<(String, PathBuf)> = Vec::new();
+            Err(e) => {
+                eprintln!(
+                    "[sync] Ошибка повторного чтения songs_dir: {}",
+                    e
+                );
+
+                return tracks;
+            }
+        };
+
+    let files: Vec<_> =
+        entries.filter_map(Result::ok).collect();
+
+    let mut audio_files:
+        Vec<(String, PathBuf)> =
+        Vec::new();
 
     for entry in files {
         let path = entry.path();
+
         if !path.is_file() {
-            eprintln!("[sync] Пропускаем (не файл): {:?}", path);
             continue;
         }
 
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
+        let ext = extension(&path)
             .to_ascii_lowercase();
-        eprintln!("[sync] Проверяем файл: {:?}, расширение: {}", path, ext);
 
-        // Конвертация видео
-        if matches!(ext.as_str(), "avi" | "mp4") {
-            eprintln!("[sync] Конвертируем видео: {:?}", path);
-            let _ = convert_video_to_webm(&path);
+        if matches!(
+            ext.as_str(),
+            "avi" | "mp4" | "flv"
+        ) {
+            eprintln!(
+                "[sync] Конвертируем видео: {:?}",
+                path
+            );
+
+            let _ =
+                convert_video_to_webm(&path);
+
             continue;
         }
 
-        // Проверяем аудио-расширение
-        if !AUDIO_EXTENSIONS.contains(&ext.as_str()) {
-            eprintln!("[sync] Пропускаем (не аудио): {:?}", path);
+        if !AUDIO_EXTENSIONS
+            .contains(&ext.as_str())
+        {
             continue;
         }
 
-        // Пропускаем hitsound
-        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+        if let Some(stem) =
+            path.file_stem()
+                .and_then(|s| s.to_str())
+        {
             if is_hitsound_name(stem) {
-                eprintln!("[sync] Пропускаем (hitsound): {:?}", path);
                 continue;
             }
         }
 
-        // ✅ ВЫЗОВЫ trim_silence И normalize_audio_volume
-        if let Err(e) = trim_silence(&path) {
-            eprintln!("[sync] Ошибка обрезки тишины {}: {}", path.display(), e);
-        }
-        if let Err(e) = normalize_audio_volume(&path) {
-            eprintln!("[sync] Ошибка нормализации {}: {}", path.display(), e);
+        if let Err(e) =
+            normalize_audio_volume(&path)
+        {
+            eprintln!(
+                "[sync] Ошибка нормализации {}: {}",
+                path.display(),
+                e
+            );
         }
 
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("Audio");
-        let title = extract_song_title(name);
-        eprintln!("[sync] Найден аудиофайл: {} -> {}", name, title);
-        audio_files.push((title, path));
+
+        let title =
+            extract_song_title(name);
+
+        audio_files.push((
+            title,
+            path,
+        ));
     }
 
-    eprintln!("[sync] Сбор аудиофайлов занял: {:?}", start.elapsed());
-    eprintln!("[sync] Всего найдено аудиофайлов: {}", audio_files.len());
+    eprintln!(
+        "[sync] Сбор аудиофайлов занял: {:?}",
+        start.elapsed()
+    );
 
-    // === 3. Создание треков ===
+
     let start = Instant::now();
-    for (id, (title, path)) in audio_files.into_iter().enumerate() {
-        let track = build_track(id, title, path);
-        eprintln!("[sync] Создан трек #{}: {}", id, track.name);
+
+    for (id, (title, path))
+    in audio_files.into_iter().enumerate()
+    {
+        let track =
+            build_track(
+                id,
+                title,
+                path,
+            );
+
         tracks.push(track);
     }
-    eprintln!("[sync] Создание треков заняло: {:?}", start.elapsed());
 
-    eprintln!("[sync] Всего треков: {}", tracks.len());
-    eprintln!("[sync] КОНЕЦ sync_tracks, общее время: {:?}", total_start.elapsed());
+    eprintln!(
+        "[sync] Создание треков заняло: {:?}",
+        start.elapsed()
+    );
+
+    eprintln!(
+        "[sync] Всего треков: {}",
+        tracks.len()
+    );
+
+    eprintln!(
+        "[sync] КОНЕЦ sync_tracks, общее время: {:?}",
+        total_start.elapsed()
+    );
+
     tracks
 }
 
-fn unique_dest_path(dir: &Path, file_name: &str) -> PathBuf {
-    let original = dir.join(file_name);
+fn unique_dest_path(
+    dir: &Path,
+    file_name: &str,
+) -> PathBuf {
+    let original =
+        dir.join(file_name);
+
     if !original.exists() {
         return original;
     }
@@ -667,16 +1014,23 @@ fn unique_dest_path(dir: &Path, file_name: &str) -> PathBuf {
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("track");
+
     let ext = Path::new(file_name)
         .extension()
         .and_then(|s| s.to_str());
 
     for n in 1usize.. {
         let name = match ext {
-            Some(ext) => format!("{stem}_{n}.{ext}"),
-            None => format!("{stem}_{n}"),
+            Some(ext) =>
+                format!("{stem}_{n}.{ext}"),
+
+            None =>
+                format!("{stem}_{n}"),
         };
-        let candidate = dir.join(name);
+
+        let candidate =
+            dir.join(name);
+
         if !candidate.exists() {
             return candidate;
         }
@@ -685,97 +1039,274 @@ fn unique_dest_path(dir: &Path, file_name: &str) -> PathBuf {
     unreachable!()
 }
 
-pub fn import_file_to_songs_dir(original: &Path, file_name: &str) -> Option<PathBuf> {
-    let destination = unique_dest_path(&get_songs_dir()?, file_name);
+pub fn import_file_to_songs_dir(
+    original: &Path,
+    file_name: &str,
+) -> Option<PathBuf> {
+    let destination =
+        unique_dest_path(
+            &get_songs_dir()?,
+            file_name,
+        );
 
-    if fs::rename(original, &destination).is_err() {
-        fs::copy(original, &destination).ok()?;
-        let _ = fs::remove_file(original);
+    if fs::rename(
+        original,
+        &destination,
+    )
+        .is_err()
+    {
+        fs::copy(
+            original,
+            &destination,
+        )
+            .ok()?;
+
+        let _ =
+            fs::remove_file(original);
     }
 
     Some(destination)
 }
 
-fn discover_track_media(track_path: &Path) -> (Vec<PathBuf>, Option<PathBuf>) {
-    let Some(parent) = track_path.parent() else {
-        return (Vec::new(), None);
-    };
-    let Some(stem) = track_path.file_stem().and_then(|name| name.to_str()) else {
+
+fn discover_track_media(
+    track_path: &Path,
+) -> (Vec<PathBuf>, Option<PathBuf>) {
+    let Some(parent) =
+        track_path.parent()
+    else {
         return (Vec::new(), None);
     };
 
-    let stem = stem.to_ascii_lowercase();
-    let Ok(entries) = fs::read_dir(parent) else {
+    let Some(stem) =
+        track_path
+            .file_stem()
+            .and_then(|name| name.to_str())
+    else {
         return (Vec::new(), None);
     };
 
-    let mut images = Vec::new();
+    let stem_lower =
+        stem.to_ascii_lowercase();
+
+    let Ok(entries) =
+        fs::read_dir(parent)
+    else {
+        return (Vec::new(), None);
+    };
+
+    let mut exact_images =
+        Vec::new();
+
+    let mut numbered_images =
+        Vec::new();
+
     let mut video = None;
 
     for entry in entries.flatten() {
         let path = entry.path();
+
         if !path.is_file() {
             continue;
         }
 
-        let Some(file_stem) = path.file_stem().and_then(|name| name.to_str()) else {
+        let Some(file_stem) =
+            path.file_stem()
+                .and_then(|name| name.to_str())
+        else {
             continue;
         };
-        let file_stem_lower = file_stem.to_ascii_lowercase();
-        let ext = extension(&path).to_ascii_lowercase();
 
-        if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-            let number = if file_stem_lower == stem {
-                Some(0)
-            } else {
-                file_stem_lower
-                    .strip_prefix(&(stem.clone() + "_"))
-                    .or_else(|| file_stem_lower.strip_prefix(&(stem.clone() + " ")))
-                    .and_then(|number| number.parse::<u64>().ok())
-            };
+        let file_stem_lower =
+            file_stem.to_ascii_lowercase();
 
-            if let Some(number) = number {
-                let rank = if matches!(ext.as_str(), "jpg" | "jpeg") { 0 } else { 1 };
-                images.push((number, rank, path));
-            }
-        } else if VIDEO_EXTENSIONS.contains(&ext.as_str()) && file_stem.eq_ignore_ascii_case(&stem) {
+        let ext =
+            extension(&path)
+                .to_ascii_lowercase();
+
+        if VIDEO_EXTENSIONS
+            .contains(&ext.as_str())
+            && file_stem_lower == stem_lower
+        {
             video.get_or_insert(path);
+            continue;
+        }
+
+        if !IMAGE_EXTENSIONS
+            .contains(&ext.as_str())
+        {
+            continue;
+        }
+
+        if file_stem_lower == stem_lower {
+            let rank =
+                if matches!(
+                    ext.as_str(),
+                    "jpg" | "jpeg"
+                ) {
+                    0
+                } else {
+                    1
+                };
+
+            exact_images.push((
+                rank,
+                path,
+            ));
+
+            continue;
+        }
+
+        if let Some(number) =
+            file_stem_lower
+                .strip_prefix(
+                    &(stem_lower.clone() + "_")
+                )
+                .or_else(|| {
+                    file_stem_lower
+                        .strip_prefix(
+                            &(stem_lower.clone() + " ")
+                        )
+                })
+                .and_then(|number| {
+                    number.parse::<u64>().ok()
+                })
+        {
+            let rank =
+                if matches!(
+                    ext.as_str(),
+                    "jpg" | "jpeg"
+                ) {
+                    0
+                } else {
+                    1
+                };
+
+            numbered_images.push((
+                number,
+                rank,
+                path,
+            ));
         }
     }
 
-    images.sort_by(|left, right| {
-        left.0
-            .cmp(&right.0)
-            .then(left.1.cmp(&right.1))
-            .then(left.2.cmp(&right.2))
-    });
+    if video.is_some() {
+        exact_images.sort_by(
+            |left, right| {
+                left.0.cmp(&right.0)
+            }
+        );
 
-    (images.into_iter().map(|(_, _, path)| path).collect(), video)
+        let covers =
+            exact_images
+                .into_iter()
+                .take(1)
+                .map(|(_, path)| path)
+                .collect();
+
+        return (
+            covers,
+            video,
+        );
+    }
+
+    exact_images.sort_by(
+        |left, right| {
+            left.0.cmp(&right.0)
+        }
+    );
+
+    numbered_images.sort_by(
+        |left, right| {
+            left.0
+                .cmp(&right.0)
+                .then(left.1.cmp(&right.1))
+                .then(left.2.cmp(&right.2))
+        }
+    );
+
+    let mut covers: Vec<PathBuf> =
+        exact_images
+            .into_iter()
+            .map(|(_, path)| path)
+            .collect();
+
+    covers.extend(
+        numbered_images
+            .into_iter()
+            .map(|(_, _, path)| path)
+    );
+
+    (covers, video)
 }
 
-pub fn build_track(id: usize, name: String, path: PathBuf) -> Track {
-    let (covers, video) = discover_track_media(&path);
-    register_track(id, path.clone(), video.clone(), covers.clone());
+pub fn build_track(
+    id: usize,
+    name: String,
+    path: PathBuf,
+) -> Track {
+    let (covers, video) =
+        discover_track_media(&path);
+
+    let offset_ms = video
+        .as_deref()
+        .map(read_video_offset)
+        .unwrap_or(0);
+
+    register_track(
+        id,
+        path.clone(),
+        video.clone(),
+        covers.clone(),
+        offset_ms,
+    );
 
     Track {
         id,
         name,
         url: Arc::new(audio_url(id)),
         path: Some(path),
-        cover_images: Arc::new((0..covers.len()).map(|index| cover_url(id, index)).collect()),
-        video_url: video.map(|_| Arc::new(video_url(id))),
+
+        cover_images: Arc::new(
+            (0..covers.len())
+                .map(|index| {
+                    cover_url(id, index)
+                })
+                .collect()
+        ),
+
+        video_url: video.map(|_| {
+            Arc::new(video_url(id))
+        }),
     }
 }
 
 pub fn load_saved_tracks() -> Vec<Track> {
-    let Some(dirs) = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp") else {
+    let Some(dirs) =
+        directories::ProjectDirs::from(
+            "com",
+            "MusicPlayer",
+            "CoachApp",
+        )
+    else {
         return Vec::new();
     };
-    let path = dirs.config_dir().join("playlists.json");
-    let Ok(data) = fs::read_to_string(path) else {
+
+    let path =
+        dirs.config_dir()
+            .join("playlists.json");
+
+    let Ok(data) =
+        fs::read_to_string(path)
+    else {
         return Vec::new();
     };
-    let Ok(saved) = serde_json::from_str::<Vec<SavedTrack>>(&data) else {
+
+    let Ok(saved) =
+        serde_json::from_str::<Vec<SavedTrack>>(
+            &data
+        )
+    else {
         return Vec::new();
     };
 
@@ -783,63 +1314,140 @@ pub fn load_saved_tracks() -> Vec<Track> {
         .into_iter()
         .enumerate()
         .filter_map(|(id, track)| {
-            let path = PathBuf::from(track.path);
-            path.exists().then(|| build_track(id, track.name, path))
+            let path =
+                PathBuf::from(track.path);
+
+            path.exists().then(|| {
+                build_track(
+                    id,
+                    track.name,
+                    path,
+                )
+            })
         })
         .collect()
 }
 
-pub fn save_tracks_to_disk(tracks: &[Track]) {
-    let Some(dirs) = directories::ProjectDirs::from("com", "MusicPlayer", "CoachApp") else {
-        eprintln!("[save] ProjectDirs не получены");
+pub fn save_tracks_to_disk(
+    tracks: &[Track],
+) {
+    let Some(dirs) =
+        directories::ProjectDirs::from(
+            "com",
+            "MusicPlayer",
+            "CoachApp",
+        )
+    else {
+        eprintln!(
+            "[save] ProjectDirs не получены"
+        );
+
         return;
     };
 
-    let config_dir = dirs.config_dir();
-    if let Err(e) = std::fs::create_dir_all(config_dir) {
-        eprintln!("[save] Не удалось создать config_dir: {}", e);
+    let config_dir =
+        dirs.config_dir();
+
+    if let Err(e) =
+        std::fs::create_dir_all(config_dir)
+    {
+        eprintln!(
+            "[save] Не удалось создать config_dir: {}",
+            e
+        );
+
         return;
     }
 
-    let path = config_dir.join("playlists.json");
-    eprintln!("[save] Сохраняем {} треков в {:?}", tracks.len(), path);
+    let path =
+        config_dir.join("playlists.json");
 
-    let saved: Vec<SavedTrack> = tracks
-        .iter()
-        .filter_map(|track| track.path.as_ref().map(|p| SavedTrack {
-            name: track.name.clone(),
-            path: p.to_string_lossy().to_string(),
-        }))
-        .collect();
+    let saved: Vec<SavedTrack> =
+        tracks
+            .iter()
+            .filter_map(|track| {
+                track
+                    .path
+                    .as_ref()
+                    .map(|p| SavedTrack {
+                        name: track.name.clone(),
+                        path: p
+                            .to_string_lossy()
+                            .to_string(),
+                    })
+            })
+            .collect();
 
     match serde_json::to_string(&saved) {
         Ok(json) => {
-            if let Err(e) = std::fs::write(&path, json) {
-                eprintln!("[save] Ошибка записи: {}", e);
-            } else {
-                eprintln!("[save] Успешно сохранено");
+            if let Err(e) =
+                std::fs::write(
+                    &path,
+                    json,
+                )
+            {
+                eprintln!(
+                    "[save] Ошибка записи: {}",
+                    e
+                );
             }
         }
-        Err(e) => eprintln!("[save] Ошибка сериализации: {}", e),
+
+        Err(e) => {
+            eprintln!(
+                "[save] Ошибка сериализации: {}",
+                e
+            );
+        }
     }
 }
 
-pub fn choose_track_visual(track: &Track, salt: u64) -> Option<(String, bool)> {
-    if let Some(video) = track.video_url.as_ref() {
-        return Some((video.as_ref().clone(), true));
+pub fn choose_track_visual(
+    track: &Track,
+    salt: u64,
+) -> Option<(String, bool, i64)> {
+    if let Some(video) =
+        track.video_url.as_ref()
+    {
+        let offset =
+            video_offset_ms(track.id);
+
+        return Some((
+            video.as_ref().clone(),
+            true,
+            offset,
+        ));
     }
+
     if track.cover_images.is_empty() {
         return None;
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as u64;
-    let mixed = now
-        ^ salt.wrapping_mul(0x9E3779B97F4A7C15)
-        ^ (track.id as u64).wrapping_mul(0xBF58476D1CE4E5B9);
-    let index = (mixed as usize) % track.cover_images.len();
+    let now =
+        std::time::SystemTime::now()
+            .duration_since(
+                std::time::UNIX_EPOCH,
+            )
+            .unwrap_or_default()
+            .as_nanos() as u64;
 
-    Some((track.cover_images[index].clone(), false))
+    let mixed =
+        now
+            ^ salt.wrapping_mul(
+            0x9E3779B97F4A7C15,
+        )
+            ^ (track.id as u64)
+            .wrapping_mul(
+                0xBF58476D1CE4E5B9,
+            );
+
+    let index =
+        (mixed as usize)
+            % track.cover_images.len();
+
+    Some((
+        track.cover_images[index].clone(),
+        false,
+        0,
+    ))
 }

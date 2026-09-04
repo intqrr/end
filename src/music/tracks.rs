@@ -5,7 +5,7 @@ use super::data::{choose_track_visual, Track};
 pub fn TrackList(
     tracks: Signal<Vec<Track>>,
     current_track_index: Signal<Option<usize>>,
-    active_visual: Signal<Option<(String, bool)>>,
+    active_visual: Signal<Option<(String, bool, i64)>>,
     mut visual_selection_id: Signal<u64>,
     mut is_playing: Signal<bool>,
     on_delete: EventHandler<usize>,
@@ -14,7 +14,6 @@ pub fn TrackList(
     let mut active_menu_idx = use_signal(|| Option::<usize>::None);
     let mut search_query = use_signal(|| String::new());
 
-    // Фильтруем с сохранением оригинального индекса
     let filtered_tracks: Vec<(usize, Track)> = snapshot
         .iter()
         .enumerate()
@@ -121,8 +120,6 @@ pub fn TrackList(
         }
     }
 }
-
-
 
 
 
