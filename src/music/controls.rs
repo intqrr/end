@@ -31,10 +31,7 @@ pub fn PlayerControls(
                         onclick: move |_| is_playing.toggle(),
                         title: if is_playing() { "Пауза" } else { "Воспроизвести" },
                         if is_playing() {
-                            div { class: "pause-icon",
-                                span { class: "pause-bar" }
-                                span { class: "pause-bar" }
-                            }
+                            div { class: "pause-icon", span { class: "pause-bar" }, span { class: "pause-bar" } }
                         } else {
                             span { class: "play-symbol", "▶" }
                         }
@@ -45,7 +42,6 @@ pub fn PlayerControls(
                         title: "Следующий трек",
                         "»"
                     }
-
                     div { class: "volume-container",
                         span { class: "volume-icon", "V" }
                         input {
@@ -56,12 +52,7 @@ pub fn PlayerControls(
                             step: "0.01",
                             oninput: move |evt| {
                                 let val: f64 = evt.value().parse().unwrap_or(1.0);
-                                let js = format!(r#"
-                                    const a = document.getElementById('audio-player');
-                                    if (a) a.volume = {val};
-                                "#);
-                                let _ = document::eval(&js);
-                                
+                                let _ = document::eval(&format!("window.MusicApp.setVolume({val})"));
                                 spawn(async move {
                                     let mut settings = data::load_settings();
                                     settings.volume = val;
@@ -72,7 +63,6 @@ pub fn PlayerControls(
                     }
                 }
             }
-
             div { class: "progress-container",
                 span { id: "music-current-time", class: "time-text", "0:00" }
                 input {
@@ -81,44 +71,11 @@ pub fn PlayerControls(
                     min: "0",
                     max: "100",
                     initial_value: "0",
-oninput: move |_| {
-    let offset_ms = video_offset_ms;
-
-    let js = format!(r##"
-        const a = document.getElementById('audio-player');
-        const p = document.getElementById('music-progress-bar');
-
-        if (a && p && !isNaN(a.duration) && a.duration > 0) {{
-            const pct = Math.max(
-                0,
-                Math.min(100, parseFloat(p.value))
-            );
-
-            const displayTime =
-                (a.duration * pct) / 100;
-
-            const audioDelaySec =
-                Math.max(0, -({offset_ms}) / 1000);
-
-            const newTime =
-                Math.min(
-                    a.duration,
-                    displayTime + audioDelaySec
-                );
-
-            a.currentTime = newTime;
-
-            p.style.background =
-                `linear-gradient(
-                    to right,
-                    #22c55e ${{pct}}%,
-                    #38383e ${{pct}}%
-                )`;
-        }}
-    "##);
-
-    let _ = document::eval(&js);
-}
+                    oninput: move |_| {
+                        let _ = document::eval(&format!(
+                            "window.MusicApp.seekAudio({video_offset_ms})"
+                        ));
+                    }
                 }
                 span { id: "music-duration-time", class: "time-text", "0:00" }
             }

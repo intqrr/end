@@ -32,6 +32,7 @@
       <list>
         <option value="CSS File" />
         <option value="Rust File" />
+        <option value="JavaScript File" />
       </list>
     </option>
   </component>

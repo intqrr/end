@@ -17,19 +17,7 @@ pub fn TrackVisual(active_visual: Signal<Option<(String, bool, i64)>>) -> Elemen
                         playsinline: true,
                         preload: "metadata",
                         onloadeddata: move |_| {
-                            let js = format!(
-                                r#"
-                                const v = document.getElementById('track-visual-video');
-                                if (v) {{
-                                    v.pause();
-                                    v.currentTime = 0;
-                                    setTimeout(() => {{
-                                        v.play().catch(e => console.log("Play error:", e));
-                                    }}, {delay_ms});
-                                }}
-                                "#
-                            );
-                            let _ = document::eval(&js);
+                            let _ = document::eval(&format!("window.MusicApp.startVideoDelayed({delay_ms})"));
                         }
                     }
                 } else {
