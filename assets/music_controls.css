@@ -1,0 +1,213 @@
+.player-controls {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    margin: 0 0 1.5rem 0;
+    width: var(--control-width);
+    max-width: 800px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    padding: 0.875rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-self: center;
+    opacity: 1;
+    transition: opacity 0.25s ease;
+    pointer-events: auto;
+}
+
+.player-controls.hidden-overlap {
+    opacity: 0;
+}
+
+.player-controls.hidden-overlap:hover {
+    opacity: 1;
+}
+
+.controls-top-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+.buttons-center-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-left: 3.75rem;
+}
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0.25rem;
+    transition: color 0.15s;
+}
+
+.btn-icon:hover {
+    color: var(--text-primary);
+}
+
+.btn-icon.active {
+    color: var(--accent);
+}
+
+.btn-play {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: var(--text-primary);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.btn-play:hover {
+    transform: scale(1.04);
+}
+
+.pause-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    height: 0.75rem;
+}
+
+.pause-bar {
+    width: 0.1875rem;
+    height: 0.75rem;
+    background-color: #000000;
+    border-radius: 0.0625rem;
+}
+
+.play-symbol {
+    color: #000000;
+    font-size: 0.9375rem;
+    margin-left: 0.1875rem;
+    line-height: 1;
+    display: inline-block;
+}
+
+.volume-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 0.75rem;
+    flex: 1 1 4.0625rem;
+    min-width: 0;
+}
+
+.volume-icon {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    font-family: sans-serif;
+}
+
+.volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    max-width: 4.0625rem;
+    height: 0.25rem;
+    background: var(--bg-hover);
+    border-radius: 0.125rem;
+    outline: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 0.625rem;
+    height: 0.625rem;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.progress-container {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.time-text {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-family: monospace;
+    min-width: 2rem;
+}
+
+#music-progress-bar {
+    accent-color: var(--accent);
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 0.25rem;
+    border-radius: 0.125rem;
+    background: #38383e;
+    outline: none;
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+}
+
+#music-progress-fill {
+    transition: width 0.05s linear;
+}
+
+#music-progress-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+}
+
+#music-progress-bar::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+#music-progress-bar::-moz-range-thumb {
+    width: 0.75rem;
+    height: 0.75rem;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+}
+
+#music-progress-bar::-moz-range-thumb:hover {
+    transform: scale(1.2);
+}
+
+#music-progress-bar::-moz-range-track {
+    height: 0.25rem;
+    background: transparent;
+    border-radius: 0.125rem;
+}

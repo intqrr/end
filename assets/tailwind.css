@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #1d1d1d; /* панели боковые */
+  --bg-secondary: #2b2b2b; /* когда наводишься на что то яркое становится */
+  --bg-hover: #383838; /* когда выбрал трек */
+  --bg-card: #252525;/* основной чуть светлый задний фон */
+  --bg-body: #121212;/* основной чуть темный задний фон */
+  --text-primary: #ffffff; /* основной цвет текста */
+  --text-secondary: #b3b3b3; /* всякие там кнопки боковые */
+  --text-muted: #888888; /* для такого темного текста */
+  --accent: #22c55e; /* основной цветной */
+  --border-color: #353535;
+  --border-light: #3b3b3b;
+  --shadow-color: rgba(0, 0, 0, 0.4);
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 0.875rem;
+  --radius-full: 9999px;
+
+  --transition-speed: 0.18s;
+  --transition-ease: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --transition-default: var(--transition-speed) var(--transition-ease);
+
+  --font-base: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --sidebar-width: 3.75rem;
+  --track-panel-width: 22rem;
+  --control-width: 80%;
+}
+
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: var(--bg-body);
+  color: #d4d4d4;
+  font-family: var(--font-base);
+  margin: 0;
+  padding: 0;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.makise {
+  height: 50dvh;
+  width: auto;
+  aspect-ratio: 378 / 529;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  position: fixed;
+  bottom: 0;
+  right: 0;
+}
+
+.chats {
+  height: 100dvh;
+  min-width: 1vw;
+  background-color: #222222;
+  position: relative;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chats::-webkit-scrollbar {
+  display: none;
+}
+
+hr {
+  border: none;
+  border-top: 0.0625rem solid #444;
+}
+
+.bar-items {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 1dvh;
+  gap: 2dvh;
+}
+
+.bar-items h1 {
+  margin: 0;
+}
+
+.music-btn {
+  font-size: 1.3rem;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-muted);
+}
+
+.hamburger-btn {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.75rem;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.25rem; /* 4px */
+  width: 2rem;  /* 32px */
+  height: 2rem;
+  border-radius: var(--radius-full);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.hamburger-btn:hover {
+  background-color: var(--bg-body);
+}
+
+.hamburger-line {
+  width: 1rem;
+  height: 0.125rem;
+  background-color: gray;
+  border-radius: var(--radius-full);
+}
+
+.sidebar-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: var(--sidebar-width);
+  background-color: #222222;
+  z-index: 50;
+  transition: transform var(--transition-default);
+}
+
+.sidebar-drawer h1 {
+  margin-top: 3dvh;
+  text-align: center;
+}
+
+.drawer-open {
+  transform: translateX(0);
+}
+
+.drawer-closed {
+  transform: translateX(-100%);
+}
+
+.menu-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100dvh;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+  transition: opacity var(--transition-default);
+}
+
+.backdrop-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.backdrop-closed {
+  opacity: 0;
+  pointer-events: none;
+}
