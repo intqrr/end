@@ -12,11 +12,22 @@ use super::audio_server::{audio_url, cover_url, register_track, video_offset_ms,
 pub struct Settings {
     pub volume: f64,
     pub shuffle: bool,
+    pub track_panel_width: Option<u32>,
+    pub chats_width: Option<u32>,
+    pub window_width: Option<f64>,
+    pub window_height: Option<f64>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { volume: 1.0, shuffle: false }
+        Self {
+            volume: 1.0,
+            shuffle: false,
+            track_panel_width: None,
+            chats_width: None,
+            window_width: None,
+            window_height: None,
+        }
     }
 }
 
@@ -48,6 +59,7 @@ pub struct Track {
     pub path: Option<PathBuf>,
     pub cover_images: Arc<Vec<String>>,
     pub video_url: Option<Arc<String>>,
+    pub gain_db: f64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -58,7 +70,65 @@ pub struct SavedTrack {
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "ogg", "wav", "flac", "m4a", "aac"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
-const VIDEO_EXTENSIONS: &[&str] = &["avi", "mp4", "webm", "flv"];
+const VIDEO_EXTENSIONS: &[&str] = &["avi", "mp4", "webm", "flv", "m4v"];
+const TARGET_DB: f64 = -18.0;
+
+fn gain_sidecar_exists(path: &Path) -> bool {
+    gain_sidecar_path(path).exists()
+}
+
+fn analyze_audio_volume(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
+    let abs_path = path.canonicalize()?;
+    let ffmpeg = ffmpeg_path();
+    let output = Command::new(&ffmpeg)
+        .args([
+            "-hide_banner",
+            "-i", abs_path.to_str().unwrap_or(""),
+            "-af", "volumedetect",
+            "-f", "null",
+            "-",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!("ffmpeg volumedetect failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mean_db = stderr
+        .lines()
+        .find_map(|line| {
+            line.split("mean_volume:")
+                .nth(1)
+                .and_then(|s| s.trim().split_whitespace().next())
+                .and_then(|v| v.parse::<f64>().ok())
+        })
+        .ok_or("mean_volume not found")?;
+
+    Ok(TARGET_DB - mean_db)
+}
+
+fn gain_sidecar_path(path: &Path) -> PathBuf {
+    let mut sidecar = path.to_path_buf();
+    match extension(path) {
+        "" => { let _ = sidecar.set_extension("gain"); }
+        ext => { let _ = sidecar.set_extension(format!("{ext}.gain")); }
+    }
+    sidecar
+}
+
+fn write_gain(path: &Path, gain_db: f64) {
+    if let Err(e) = fs::write(gain_sidecar_path(path), gain_db.to_string()) {
+        eprintln!("[sync] Ошибка записи gain для {:?}: {}", path, e);
+    }
+}
+
+pub fn read_gain(path: &Path) -> f64 {
+    fs::read_to_string(gain_sidecar_path(path))
+        .ok()
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .unwrap_or(0.0)
+}
 
 pub fn extract_song_title(name: &str) -> String {
     let stem = Path::new(name).file_stem().and_then(|name| name.to_str()).unwrap_or(name);
@@ -98,23 +168,6 @@ fn is_hitsound_name(name: &str) -> bool {
         || name.starts_with("soft-")
 }
 
-fn marker_path(path: &Path) -> PathBuf {
-    let mut marker = path.to_path_buf();
-    match extension(path) {
-        "" => { let _ = marker.set_extension("normalized"); }
-        ext => { let _ = marker.set_extension(format!("{ext}.normalized")); }
-    }
-    marker
-}
-
-fn mark_as_normalized(path: &Path) -> std::io::Result<()> {
-    File::create(marker_path(path)).map(|_| ())
-}
-
-fn is_already_normalized(path: &Path) -> bool {
-    marker_path(path).exists()
-}
-
 fn video_offset_sidecar_path(path: &Path) -> PathBuf {
     let mut sidecar = path.to_path_buf();
     match extension(path) {
@@ -135,51 +188,6 @@ pub fn read_video_offset(path: &Path) -> i64 {
         .ok()
         .and_then(|s| s.trim().parse::<i64>().ok())
         .unwrap_or(0)
-}
-
-fn audio_codec_args_for_ext(ext: &str) -> Vec<String> {
-    match ext {
-        "mp3" => vec!["-c:a".into(), "libmp3lame".into(), "-q:a".into(), "2".into()],
-        "flac" => vec!["-c:a".into(), "flac".into()],
-        "ogg" | "oga" => vec!["-c:a".into(), "libvorbis".into(), "-q:a".into(), "6".into()],
-        "wav" => vec!["-c:a".into(), "pcm_s16le".into()],
-        _ => vec!["-c:a".into(), "libmp3lame".into(), "-q:a".into(), "2".into()],
-    }
-}
-
-fn normalize_audio_volume(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let abs_path = path.canonicalize().map_err(|e| format!("canonicalize failed: {}", e))?;
-    if !abs_path.exists() {
-        return Err(format!("file does not exist: {:?}", abs_path).into());
-    }
-    if is_already_normalized(&abs_path) {
-        return Ok(());
-    }
-    let ext = extension(&abs_path).to_ascii_lowercase();
-    let temp_path = abs_path.with_extension(format!("norm.tmp.{ext}"));
-    let _ = fs::remove_file(&temp_path);
-    let ffmpeg = ffmpeg_path();
-    let path_str = abs_path.to_string_lossy().to_string();
-    let temp_str = temp_path.to_string_lossy().to_string();
-    let mut args = vec![
-        "-y".into(), "-hide_banner".into(), "-loglevel".into(), "error".into(),
-        "-i".into(), path_str,
-        "-af".into(), "loudnorm=I=-10:TP=-1.5:LRA=11".into(),
-        "-vn".into(),
-    ];
-    args.extend(audio_codec_args_for_ext(&ext));
-    args.push(temp_str);
-    let output = Command::new(&ffmpeg).args(&args).output()?;
-    if !output.status.success() {
-        let _ = fs::remove_file(&temp_path);
-        return Err(format!("ffmpeg normalization failed for {:?}: {}", abs_path, String::from_utf8_lossy(&output.stderr)).into());
-    }
-    if !temp_path.exists() {
-        return Err(format!("ffmpeg did not create output file: {:?}", temp_path).into());
-    }
-    fs::rename(temp_path, &abs_path)?;
-    mark_as_normalized(&abs_path)?;
-    Ok(())
 }
 
 fn read_osu_metadata(path: &Path) -> (Option<String>, Option<String>) {
@@ -390,7 +398,6 @@ pub fn sync_tracks() -> Vec<Track> {
     let mut tracks = Vec::new();
     let Some(songs_dir) = get_songs_dir() else { return tracks; };
 
-    // Обработка папок
     if let Ok(entries) = fs::read_dir(&songs_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -400,14 +407,13 @@ pub fn sync_tracks() -> Vec<Track> {
         }
     }
 
-    // Сбор аудиофайлов из корня
     if let Ok(entries) = fs::read_dir(&songs_dir) {
         let mut audio_files = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_file() { continue; }
             let ext = extension(&path).to_ascii_lowercase();
-            if matches!(ext.as_str(), "avi" | "mp4" | "flv") {
+            if matches!(ext.as_str(), "avi" | "mp4" | "flv" | "m4v") {
                 let _ = convert_video_to_webm(&path);
                 continue;
             }
@@ -415,9 +421,17 @@ pub fn sync_tracks() -> Vec<Track> {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 if is_hitsound_name(stem) { continue; }
             }
-            if let Err(e) = normalize_audio_volume(&path) {
-                eprintln!("[sync] Ошибка нормализации {}: {}", path.display(), e);
+
+            if !gain_sidecar_exists(&path) {
+                match analyze_audio_volume(&path) {
+                    Ok(gain_db) => {
+                        let gain_db = gain_db.clamp(-12.0, 12.0);
+                        write_gain(&path, gain_db);
+                    },
+                    Err(e) => eprintln!("[sync] Ошибка анализа {}: {}", path.display(), e),
+                }
             }
+
             let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("Audio");
             let title = extract_song_title(name);
             audio_files.push((title, path));
@@ -505,6 +519,7 @@ fn discover_track_media(track_path: &Path) -> (Vec<PathBuf>, Option<PathBuf>) {
 pub fn build_track(id: usize, name: String, path: PathBuf) -> Track {
     let (covers, video) = discover_track_media(&path);
     let offset_ms = video.as_deref().map(read_video_offset).unwrap_or(0);
+    let gain_db = read_gain(&path);
     register_track(id, path.clone(), video.clone(), covers.clone(), offset_ms);
     Track {
         id,
@@ -513,6 +528,7 @@ pub fn build_track(id: usize, name: String, path: PathBuf) -> Track {
         path: Some(path),
         cover_images: Arc::new((0..covers.len()).map(|index| cover_url(id, index)).collect()),
         video_url: video.map(|_| Arc::new(video_url(id))),
+        gain_db,
     }
 }
 

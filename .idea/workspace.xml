@@ -14,8 +14,13 @@
   <component name="ChangeListManager">
     <list default="true" id="68f3329a-88f5-481c-a444-1423602bc7f9" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/music_base.css" beforeDir="false" afterPath="$PROJECT_DIR$/assets/music_base.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/music_controls.css" beforeDir="false" afterPath="$PROJECT_DIR$/assets/music_controls.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/player.js" beforeDir="false" afterPath="$PROJECT_DIR$/assets/player.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/tailwind.css" beforeDir="false" afterPath="$PROJECT_DIR$/assets/tailwind.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/music/audio_server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/audio_server.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/music/controls.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/controls.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/music/data.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/data.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/music/music_player.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/music_player.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/music/tracks.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/music/tracks.rs" afterDir="false" />
@@ -31,8 +36,8 @@
     <option name="RECENT_TEMPLATES">
       <list>
         <option value="CSS File" />
-        <option value="Rust File" />
         <option value="JavaScript File" />
+        <option value="Rust File" />
       </list>
     </option>
   </component>
@@ -46,59 +51,59 @@
     <decayedCancelled>
       <entry key="MS100" value="1.0" />
       <entry key="MS500" value="1.0" />
-      <entry key="S2" value="1.0000165353300032" />
-      <entry key="S5" value="1.0189788197127492" />
-      <entry key="S10" value="1.2410446140321973" />
-      <entry key="S30" value="3.3290750817415664" />
-      <entry key="S60" value="6.454316821728539" />
-      <entry key="M2" value="10.770261475210287" />
-      <entry key="M5" value="16.570690904736463" />
-      <entry key="M10" value="19.801911408107806" />
-      <entry key="M15" value="21.26251975460821" />
-      <entry key="M30" value="23.625302601845153" />
-      <entry key="H1" value="26.72144559531987" />
-      <entry key="H2" value="34.85714325938941" />
-      <entry key="H4" value="63.28162827401506" />
-      <entry key="D1" value="303.88011674535136" />
-      <entry key="W1" value="453.337426504925" />
+      <entry key="S2" value="1.0" />
+      <entry key="S5" value="1.0" />
+      <entry key="S10" value="1.0" />
+      <entry key="S30" value="1.000000000072016" />
+      <entry key="S60" value="1.0000200514986073" />
+      <entry key="M2" value="1.010849096130672" />
+      <entry key="M5" value="1.492229271577037" />
+      <entry key="M10" value="2.83404093728893" />
+      <entry key="M15" value="4.002692925037596" />
+      <entry key="M30" value="7.146796057838223" />
+      <entry key="H1" value="14.449867299978774" />
+      <entry key="H2" value="31.722979618614595" />
+      <entry key="H4" value="62.35228706935206" />
+      <entry key="D1" value="308.0567540970678" />
+      <entry key="W1" value="542.0128439064515" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
       <entry key="MS500" value="0.0" />
       <entry key="S2" value="0.0" />
-      <entry key="S5" value="0.0" />
-      <entry key="S10" value="3.706402145090306E-289" />
-      <entry key="S30" value="7.183192628096144E-97" />
-      <entry key="S60" value="8.475371748835649E-49" />
-      <entry key="M2" value="9.206178223799305E-25" />
-      <entry key="M5" value="2.430142562079344E-10" />
-      <entry key="M10" value="1.558969768815109E-5" />
-      <entry key="M15" value="6.254063047484373E-4" />
-      <entry key="M30" value="0.028156803366848542" />
-      <entry key="H1" value="0.33389639399280857" />
-      <entry key="H2" value="1.8065803446318953" />
-      <entry key="H4" value="5.210607169517308" />
-      <entry key="D1" value="21.35751360514489" />
-      <entry key="W1" value="30.118403500271402" />
+      <entry key="S5" value="4.989628744170683E-295" />
+      <entry key="S10" value="9.978658713243262E-148" />
+      <entry key="S30" value="1.5858831439635036E-49" />
+      <entry key="S60" value="5.631671418365365E-25" />
+      <entry key="M2" value="1.0612808582790706E-12" />
+      <entry key="M5" value="2.4600805842541068E-5" />
+      <entry key="M10" value="0.007014627096101045" />
+      <entry key="M15" value="0.04622069064967569" />
+      <entry key="M30" value="0.31800693699052507" />
+      <entry key="H1" value="1.0654764341091814" />
+      <entry key="H2" value="2.701359779452272" />
+      <entry key="H4" value="5.439220191570909" />
+      <entry key="D1" value="23.371189197568018" />
+      <entry key="W1" value="38.33195706343874" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="0.9395227492140118" />
-      <entry key="MS500" value="0.9876008614453725" />
-      <entry key="S2" value="0.9969021704246462" />
-      <entry key="S5" value="1.0177040530052277" />
-      <entry key="S10" value="1.2402494525223935" />
-      <entry key="S30" value="3.3283569811599114" />
-      <entry key="S60" value="6.453601392151222" />
-      <entry key="M2" value="10.769519798661007" />
-      <entry key="M5" value="16.57003930916854" />
-      <entry key="M10" value="19.801421893240462" />
-      <entry key="M15" value="21.262672533420123" />
-      <entry key="M30" value="23.652977463824943" />
-      <entry key="H1" value="27.054770855565828" />
-      <entry key="H2" value="36.66277931207548" />
-      <entry key="H4" value="68.49076041345106" />
-      <entry key="D1" value="325.23633004985624" />
-      <entry key="W1" value="483.45555824682685" />
+      <entry key="MS100" value="0.0717936471873147" />
+      <entry key="MS500" value="0.5904963307147651" />
+      <entry key="S2" value="0.8766057213160351" />
+      <entry key="S5" value="0.9486843151404539" />
+      <entry key="S10" value="0.974004268543241" />
+      <entry key="S30" value="0.9912585662396218" />
+      <entry key="S60" value="0.9956397135679618" />
+      <entry key="M2" value="1.0086461445416048" />
+      <entry key="M5" value="1.4911467669761607" />
+      <entry key="M10" value="2.8401476667802354" />
+      <entry key="M15" value="4.048021152509842" />
+      <entry key="M30" value="7.4637302042528075" />
+      <entry key="H1" value="15.513972258325929" />
+      <entry key="H2" value="34.42274905613447" />
+      <entry key="H4" value="67.78996845154838" />
+      <entry key="D1" value="331.4266553654335" />
+      <entry key="W1" value="580.3444801252037" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -147,6 +152,7 @@
 }</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/assets" />
     </key>
     <key name="MoveFile.RECENT_KEYS">

@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use dioxus::document;
 
 #[component]
 pub fn TrackVisual(active_visual: Signal<Option<(String, bool, i64)>>) -> Element {
@@ -12,13 +13,13 @@ pub fn TrackVisual(active_visual: Signal<Option<(String, bool, i64)>>) -> Elemen
                         class: "music-visual-media",
                         src: "{url}",
                         autoplay: false,
-                        loop: true,
+                        loop: false,
                         muted: true,
                         playsinline: true,
                         preload: "metadata",
                         onloadeddata: move |_| {
-                            let _ = document::eval(&format!("window.MusicApp.startVideoDelayed({delay_ms})"));
-                        }
+                            let _ = document::eval("setTimeout(() => { if (window.updateControlsOverlap) window.updateControlsOverlap(); }, 200);");
+                        },
                     }
                 } else {
                     img {

@@ -12,6 +12,7 @@ pub struct TrackMedia {
     pub video_offset_ms: i64,
 }
 
+
 static TRACK_REGISTRY: OnceLock<Mutex<HashMap<usize, TrackMedia>>> = OnceLock::new();
 static AUDIO_SERVER_PORT: OnceLock<u16> = OnceLock::new();
 static CACHE_BUSTER: AtomicU64 = AtomicU64::new(0);
@@ -85,12 +86,16 @@ pub fn spawn_audio_server() -> u16 {
 }
 
 fn handle_request(request: tiny_http::Request) {
+    let started = std::time::Instant::now();
+    let url_for_log = request.url().to_string();
     if request.method() == &tiny_http::Method::Options {
+        eprintln!("[server] {} обработан за {:?}", url_for_log, started.elapsed());
         let _ = request.respond(empty_response(204));
         return;
     }
     let url = request.url().to_string();
     let Some((kind, id)) = parse_request_kind(&url) else {
+        eprintln!("[server] {} обработан за {:?}", url_for_log, started.elapsed());
         let _ = request.respond(empty_response(404));
         return;
     };
@@ -103,10 +108,12 @@ fn handle_request(request: tiny_http::Request) {
         })
     };
     let Some(file_path) = file_path else {
+        eprintln!("[server] {} обработан за {:?}", url_for_log, started.elapsed());
         let _ = request.respond(empty_response(404));
         return;
     };
     let Ok(mut file) = std::fs::File::open(&file_path) else {
+        eprintln!("[server] {} обработан за {:?}", url_for_log, started.elapsed());
         let _ = request.respond(empty_response(404));
         return;
     };
@@ -131,26 +138,42 @@ fn handle_request(request: tiny_http::Request) {
             if start <= end && file_len > 0 {
                 let len = end.saturating_sub(start) + 1;
                 let Ok(len_usize) = usize::try_from(len) else {
+                    eprintln!("[server] {} обработан за {:?}", url_for_log, started.elapsed());
                     let _ = request.respond(empty_response(416));
                     return;
                 };
-                let mut buf = vec![0u8; len_usize];
-                if file.seek(SeekFrom::Start(start)).is_ok() && file.read_exact(&mut buf).is_ok() {
+
+                if file.seek(SeekFrom::Start(start)).is_ok() {
                     let content_type = tiny_http::Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap();
-                    let content_range = tiny_http::Header::from_bytes(&b"Content-Range"[..], format!("bytes {}-{}/{}", start, end, file_len).as_bytes()).unwrap();
+                    let content_range = tiny_http::Header::from_bytes(
+                        &b"Content-Range"[..],
+                        format!("bytes {}-{}/{}", start, end, file_len).as_bytes(),
+                    ).unwrap();
                     let accept_ranges = tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], b"bytes").unwrap();
-                    let mut response = tiny_http::Response::from_data(buf)
-                        .with_status_code(206)
-                        .with_header(content_type)
-                        .with_header(content_range)
-                        .with_header(accept_ranges);
+
+                    let reader = file.take(len);
+
+                    let response = tiny_http::Response::new(
+                        tiny_http::StatusCode(206),
+                        vec![content_type, content_range, accept_ranges],
+                        reader,
+                        Some(len_usize),
+                        None,
+                    );
+
+                    let mut response = response;
                     for header in cors_headers() {
                         response.add_header(header);
                     }
+                    eprintln!("[server] {} обработан за {:?}", url_for_log, started.elapsed());
                     let _ = request.respond(response);
                     return;
                 }
+                eprintln!("[server] {} обработан за {:?}", url_for_log, started.elapsed());
+                let _ = request.respond(empty_response(416));
+                return;
             }
+            eprintln!("[server] {} обработан за {:?}", url_for_log, started.elapsed());
             let _ = request.respond(empty_response(416));
             return;
         }
@@ -200,16 +223,6 @@ pub fn unregister_track(id: usize) {
 
 pub fn video_offset_ms(id: usize) -> i64 {
     track_registry().lock().unwrap().get(&id).map(|m| m.video_offset_ms).unwrap_or(0)
-}
-
-pub fn audio_delay_ms(id: usize) -> u64 {
-    let offset = video_offset_ms(id);
-    if offset < 0 { offset.unsigned_abs() } else { 0 }
-}
-
-pub fn video_delay_ms(id: usize) -> u64 {
-    let offset = video_offset_ms(id);
-    if offset > 0 { offset as u64 } else { 0 }
 }
 
 fn guess_mime(path: &std::path::Path) -> &'static str {
