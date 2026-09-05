@@ -1,5 +1,0 @@
-/home/int/Документы/projects/rust/kochora/target/debug/build/field-offset-35eff247ad2a733d/build_script_build-35eff247ad2a733d.d: /home/int/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/field-offset-0.3.6/build.rs
-
-/home/int/Документы/projects/rust/kochora/target/debug/build/field-offset-35eff247ad2a733d/build_script_build-35eff247ad2a733d: /home/int/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/field-offset-0.3.6/build.rs
-
-/home/int/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/field-offset-0.3.6/build.rs:
