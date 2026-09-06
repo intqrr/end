@@ -1,28 +1,54 @@
-name: Build Windows EXE
-
+name: Build Multi-Platform
 on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: windows-latest
-
+  build-matrix:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: kochora.exe
+            asset_name: kochora-windows
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: x86_64-pc-windows-msvc
-          override: true
-
+          targets: ${{ matrix.target }}
       - name: Build release
-        run: cargo build --release --bin kochora
-
+        run: cargo build --release --bin kochora --target ${{ matrix.target }}
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kochora-windows
-          path: target/release/kochora.exe
+          name: ${{ matrix.asset_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+
+  build-macos-universal:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - name: Build for Intel
+        run: cargo build --release --bin kochora --target x86_64-apple-darwin
+      - name: Build for Apple Silicon
+        run: cargo build --release --bin kochora --target aarch64-apple-darwin
+      - name: Create universal binary
+        run: |
+          mkdir -p target/universal-apple-darwin/release
+          lipo -create \
+            target/x86_64-apple-darwin/release/kochora \
+            target/aarch64-apple-darwin/release/kochora \
+            -output target/universal-apple-darwin/release/kochora
+      - name: Verify universal binary
+        run: lipo -info target/universal-apple-darwin/release/kochora
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kochora-macos-universal
+          path: target/universal-apple-darwin/release/kochora
